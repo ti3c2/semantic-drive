@@ -1,0 +1,384 @@
+.sd-app {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 100vh;
+}
+
+.sd-sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  padding: 24px;
+  background: #111110;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sd-logo {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  margin-bottom: 22px;
+}
+
+.sd-sidebar button {
+  border: 0;
+  border-radius: 14px;
+  padding: 12px 14px;
+  text-align: left;
+  background: transparent;
+  color: #dadad7;
+}
+
+.sd-sidebar button.active,
+.sd-sidebar button:hover {
+  background: #272724;
+  color: #fff;
+}
+
+.sd-sidebar-note {
+  margin-top: auto;
+  color: #aaa7a0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.sd-main {
+  padding: 28px;
+}
+
+.sd-header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.sd-search {
+  flex: 1;
+  display: flex;
+  gap: 10px;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid #e5e0d8;
+  border-radius: 22px;
+  box-shadow: 0 12px 38px rgba(0, 0, 0, 0.06);
+}
+
+.sd-search input {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  padding: 10px 14px;
+  background: transparent;
+}
+
+.sd-search button,
+.sd-upload-button,
+.sd-actions button,
+.sd-actions a,
+.sd-drawer-actions button,
+.sd-drawer-actions a {
+  border: 0;
+  border-radius: 14px;
+  padding: 10px 14px;
+  background: #181817;
+  color: white;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sd-upload-button {
+  height: 54px;
+}
+
+.sd-dropzone {
+  border: 1.5px dashed #c9c2b7;
+  border-radius: 24px;
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #605b52;
+  background: rgba(255, 255, 255, 0.58);
+  margin-bottom: 18px;
+}
+
+.sd-error {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: #ffe9e9;
+  border: 1px solid #ffc8c8;
+  color: #842121;
+  margin-bottom: 14px;
+}
+
+.sd-result-count {
+  color: #6a645c;
+  font-size: 14px;
+  margin: 10px 2px 18px;
+}
+
+.sd-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 16px;
+}
+
+.sd-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 22px;
+  background: #fff;
+  border: 1px solid #e7e1d8;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.05);
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.sd-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.09);
+}
+
+.sd-thumb {
+  position: relative;
+  aspect-ratio: 1.15;
+  background: #eee9df;
+  display: grid;
+  place-items: center;
+}
+
+.sd-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sd-placeholder {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #77716a;
+  font-weight: 800;
+}
+
+.sd-status {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 6px 8px;
+  background: rgba(17, 17, 16, 0.85);
+  color: #fff;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.sd-card-body {
+  padding: 14px;
+}
+
+.sd-card-title {
+  font-weight: 750;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sd-card-meta {
+  margin-top: 8px;
+  display: flex;
+  justify-content: space-between;
+  color: #7b756d;
+  font-size: 13px;
+}
+
+.sd-match {
+  font-size: 13px;
+  line-height: 1.4;
+  color: #4b4741;
+  max-height: 56px;
+  overflow: hidden;
+}
+
+.sd-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sd-tags span {
+  font-size: 12px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #f0ede7;
+  color: #5d574f;
+}
+
+.sd-actions {
+  display: flex;
+  gap: 8px;
+  padding: 0 14px 14px;
+}
+
+.sd-actions button,
+.sd-actions a {
+  flex: 1;
+  font-size: 12px;
+  padding: 8px;
+  background: #f1eee7;
+  color: #181817;
+}
+
+.sd-drawer {
+  position: fixed;
+  inset: 16px 16px 16px auto;
+  width: min(520px, calc(100vw - 32px));
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #e5e0d8;
+  border-radius: 28px;
+  padding: 22px;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.22);
+  z-index: 5;
+}
+
+.sd-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: #f1eee7;
+  font-size: 22px;
+}
+
+.sd-drawer h2 {
+  margin: 0 40px 18px 0;
+  letter-spacing: -0.03em;
+}
+
+.sd-preview {
+  background: #f4f0e8;
+  border-radius: 18px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.sd-preview img,
+.sd-preview video {
+  width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  display: block;
+}
+
+.sd-preview audio {
+  width: 100%;
+  margin: 36px 0;
+}
+
+.sd-detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid #eee9df;
+  color: #5e5850;
+}
+
+.sd-detail-row b {
+  color: #181817;
+}
+
+.sd-drawer-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.sd-drawer-actions button,
+.sd-drawer-actions a {
+  font-size: 12px;
+  padding: 10px 8px;
+}
+
+.sd-share-box {
+  background: #f7f5f0;
+  border: 1px solid #e5e0d8;
+  border-radius: 18px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.sd-share-box input,
+.sd-share-box textarea {
+  width: 100%;
+  border: 1px solid #ded8ce;
+  border-radius: 12px;
+  padding: 9px;
+  background: #fff;
+}
+
+.sd-share-box textarea {
+  min-height: 78px;
+}
+
+.sd-extraction {
+  margin-top: 14px;
+}
+
+.sd-extraction h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+.sd-extraction pre {
+  margin: 0;
+  white-space: pre-wrap;
+  max-height: 220px;
+  overflow: auto;
+  background: #f7f5f0;
+  border: 1px solid #e5e0d8;
+  border-radius: 16px;
+  padding: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+@media (max-width: 820px) {
+  .sd-app {
+    grid-template-columns: 1fr;
+  }
+
+  .sd-sidebar {
+    position: static;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    overflow-x: auto;
+  }
+
+  .sd-sidebar-note {
+    display: none;
+  }
+
+  .sd-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .sd-drawer-actions {
+    grid-template-columns: 1fr;
+  }
+}
