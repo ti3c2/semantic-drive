@@ -28,15 +28,9 @@ def deterministic_embedding(text: str, dimensions: int) -> list[float]:
     return [v / norm for v in values]
 
 
-def _openai_client():
-    from openai import OpenAI
-
-    return OpenAI(api_key=settings.openai_api_key)
-
-
 @retry(stop=stop_after_attempt(4), wait=wait_exponential_jitter(initial=1, max=12))
 def _embed_with_openai(texts: list[str]) -> list[list[float]]:
-    client = _openai_client()
+    client = settings.get_openai_emb_client()
     try:
         response = client.embeddings.create(
             model=settings.openai_embedding_model,

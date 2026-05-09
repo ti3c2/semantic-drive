@@ -27,12 +27,6 @@ Do not invent text. If no text is visible, set ocr_text to an empty string.
 """.strip()
 
 
-def _openai_client():
-    from openai import OpenAI
-
-    return OpenAI(api_key=settings.openai_api_key)
-
-
 def _clean_json(text: str) -> dict[str, Any]:
     cleaned = text.strip()
     if cleaned.startswith("```"):
@@ -57,7 +51,7 @@ def _data_url(path: Path, mime_type: str | None = None) -> str:
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential_jitter(initial=1, max=10))
 def _vision_via_responses(path: Path, mime_type: str) -> str:
-    client = _openai_client()
+    client = settings.get_openai_client()
     response = client.responses.create(
         model=settings.openai_vision_model,
         input=[
@@ -75,7 +69,7 @@ def _vision_via_responses(path: Path, mime_type: str) -> str:
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential_jitter(initial=1, max=10))
 def _vision_via_chat(path: Path, mime_type: str) -> str:
-    client = _openai_client()
+    client = settings.get_openai_client()
     response = client.chat.completions.create(
         model=settings.openai_vision_model,
         messages=[
@@ -115,7 +109,7 @@ def transcribe_audio_file(path: Path) -> str:
     if not settings.has_openai:
         return "OpenAI API key is not configured, so transcription was skipped."
 
-    client = _openai_client()
+    client = settings.get_openai_client()
     with path.open("rb") as handle:
         response = client.audio.transcriptions.create(
             model=settings.openai_transcription_model,

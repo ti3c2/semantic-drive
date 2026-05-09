@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Literal
 from uuid import UUID
 
+import httpx
+from openai import OpenAI
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -26,12 +28,14 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     cohere_api_key: str | None = None
 
-    openai_base_url: str = "https://api.openai.com/v1"
+    openai_api_base: str = "https://api.openai.com/v1"
     openai_vision_model: str = "gpt-4o-mini"
     openai_transcription_model: str = "gpt-4o-mini-transcribe"
     openai_embedding_model: str = "text-embedding-3-small"
-    openai_emb_base_url: str = openai_base_url
+    openai_emb_api_base: str = openai_api_base
     openai_embedding_dimensions: int = 1536
+    openai_use_proxy: bool = False
+    proxy_url: str | None = None
     cohere_rerank_model: str = "rerank-v3.5"
 
     database_url: str = "postgresql+psycopg://semantic:semantic@localhost:5432/semantic_drive"
@@ -70,6 +74,19 @@ class Settings(BaseSettings):
     @property
     def has_cohere(self) -> bool:
         return bool(self.cohere_api_key)
+
+    def _get_openai_client(self, api_base: str) -> OpenAI:
+        return OpenAI(
+            api_key=self.openai_api_key,
+            base_url=api_base,
+            http_client=(httpx.Client(proxy=self.proxy_url) if self.openai_use_proxy else None),
+        )
+
+    def get_openai_client(self) -> OpenAI:
+        return self._get_openai_client(self.openai_api_base)
+
+    def get_openai_emb_client(self) -> OpenAI:
+        return self._get_openai_client(self.openai_emb_api_base)
 
 
 @lru_cache(maxsize=1)
