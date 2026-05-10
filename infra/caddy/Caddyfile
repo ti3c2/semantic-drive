@@ -1,0 +1,14 @@
+{
+	local_certs
+	default_sni 127.0.0.1
+}
+
+https://localhost, https://127.0.0.1 {
+	tls internal
+	encode zstd gzip
+
+	@backend path /api/* /health /docs* /redoc* /openapi.json /s/* /embed/*
+	reverse_proxy @backend backend:8000
+
+	reverse_proxy frontend:4321
+}

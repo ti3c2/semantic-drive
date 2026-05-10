@@ -18,6 +18,10 @@ This repository is intentionally built as an MVP foundation, not a bloated enter
 
 ## Local development
 
+Infrastructure lives under `infra/`. Caddy is the browser-facing edge proxy: it terminates local HTTPS, sends `/api/*`, `/s/*`, `/embed/*`, `/docs`, `/redoc`, `/openapi.json`, and `/health` to FastAPI, and sends everything else to Astro.
+
+The app containers are only exposed on the Docker network. Data services still publish local ports for development tools.
+
 ### 1. Copy env file
 
 ```bash
@@ -36,20 +40,28 @@ Without `OPENAI_API_KEY`, the app still runs and uses deterministic local mock e
 ### 2. Start services
 
 ```bash
-docker compose up --build
+docker compose --env-file .env -f infra/docker-compose.yml up --build
 ```
 
 Open:
 
-- Frontend: http://localhost:4321
-- Backend API: http://localhost:8000/docs
-- MinIO Console: http://localhost:9001
-- Qdrant: http://localhost:6333/dashboard
+- App: https://localhost
+- Backend API docs: https://localhost/docs
+- MinIO Console: http://localhost:9011
+- Qdrant: http://localhost:6330/dashboard
 
 MinIO credentials from `.env.example`:
 
 - user: `semantic`
 - password: `semantic-secret`
+
+Caddy uses an internal local CA for `https://localhost` and `https://127.0.0.1`. The first browser visit may require accepting the local certificate unless you import the generated Caddy root certificate from the `caddy` container.
+
+To export that root certificate:
+
+```bash
+docker compose --env-file .env -f infra/docker-compose.yml cp caddy:/data/caddy/pki/authorities/local/root.crt infra/caddy/local-root.crt
+```
 
 ### 3. Run only backend locally with uv
 
@@ -71,7 +83,7 @@ uv run python -m app.workers.worker
 ```bash
 cd frontend
 npm install
-npm run dev -- --host 0.0.0.0
+PUBLIC_API_BASE_URL=http://localhost:8000 npm run dev -- --host 0.0.0.0
 ```
 
 ## API overview

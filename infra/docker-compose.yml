@@ -1,4 +1,21 @@
+name: semantic-drive
+
 services:
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      - frontend
+      - backend
+    ports:
+      - "${CADDY_HTTP_PORT:-80}:80"
+      - "${CADDY_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - semantic-store-network
+
   postgres:
     image: postgres:18.3
     environment:
@@ -60,11 +77,16 @@ services:
 
   backend:
     build:
-      context: ./backend
+      context: ../backend
     env_file:
-      - .env
-    ports:
-      - "8010:8010"
+      - ./.env
+    environment:
+      API_BASE_URL: https://localhost
+      FRONTEND_BASE_URL: https://localhost
+      ALLOWED_ORIGINS: '["https://localhost","https://127.0.0.1","http://localhost:4321","http://127.0.0.1:4321"]'
+      MINIO_EXTERNAL_ENDPOINT: localhost:9010
+    expose:
+      - "8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -77,16 +99,21 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ./backend:/app
+      - ../backend:/app
     networks:
       - semantic-store-network
-    command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8010 --reload
+    command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   worker:
     build:
-      context: ./backend
+      context: ../backend
     env_file:
-      - .env
+      - ./.env
+    environment:
+      API_BASE_URL: https://localhost
+      FRONTEND_BASE_URL: https://localhost
+      ALLOWED_ORIGINS: '["https://localhost","https://127.0.0.1","http://localhost:4321","http://127.0.0.1:4321"]'
+      MINIO_EXTERNAL_ENDPOINT: localhost:9010
     depends_on:
       backend:
         condition: service_started
@@ -101,30 +128,32 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ./backend:/app
+      - ../backend:/app
     networks:
       - semantic-store-network
     command: uv run python -m app.workers.worker
 
   frontend:
     build:
-      context: ./frontend
+      context: ../frontend
     environment:
-      PUBLIC_API_BASE_URL: http://localhost:8010
-    ports:
-      - "4321:4321"
+      PUBLIC_API_BASE_URL: ""
+    expose:
+      - "4321"
     depends_on:
       - backend
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ./frontend:/app
+      - ../frontend:/app
       - frontend-node-modules:/app/node_modules
     networks:
       - semantic-store-network
     command: npm run dev -- --host 0.0.0.0
 
 volumes:
+  caddy-data:
+  caddy-config:
   postgres-data:
   qdrant-data:
   minio-data:
