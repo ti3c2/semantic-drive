@@ -1,7 +1,8 @@
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './SemanticDriveApp.css';
 
-const API_BASE = import.meta.env.PUBLIC_API_BASE_URL || 'http://localhost:8000';
+const API_BASE = (import.meta.env.PUBLIC_API_BASE_URL ?? '').replace(/\/$/, '');
 
 type Asset = {
   id: string;
