@@ -17,12 +17,18 @@ router = APIRouter(prefix="/api/folders", tags=["folders"])
 
 @router.get("", response_model=list[FolderOut])
 def list_folders(db: Session = Depends(get_db)) -> list[FolderOut]:
-    return list(db.scalars(select(Folder).where(Folder.owner_id == settings.demo_owner_id).order_by(Folder.name)).all())
+    return list(
+        db.scalars(
+            select(Folder).where(Folder.owner_id == settings.demo_owner_id).order_by(Folder.name)
+        ).all()
+    )
 
 
 @router.post("", response_model=FolderOut, status_code=201)
 def create_folder(body: FolderCreate, db: Session = Depends(get_db)) -> FolderOut:
-    folder = Folder(owner_id=settings.demo_owner_id, name=body.name.strip(), parent_id=body.parent_id)
+    folder = Folder(
+        owner_id=settings.demo_owner_id, name=body.name.strip(), parent_id=body.parent_id
+    )
     db.add(folder)
     db.commit()
     db.refresh(folder)
@@ -31,7 +37,9 @@ def create_folder(body: FolderCreate, db: Session = Depends(get_db)) -> FolderOu
 
 @router.patch("/{folder_id}", response_model=FolderOut)
 def update_folder(folder_id: UUID, body: FolderUpdate, db: Session = Depends(get_db)) -> FolderOut:
-    folder = db.scalar(select(Folder).where(Folder.id == folder_id, Folder.owner_id == settings.demo_owner_id))
+    folder = db.scalar(
+        select(Folder).where(Folder.id == folder_id, Folder.owner_id == settings.demo_owner_id)
+    )
     if not folder:
         raise HTTPException(status_code=404, detail="Folder not found")
     if body.name is not None:
@@ -45,7 +53,9 @@ def update_folder(folder_id: UUID, body: FolderUpdate, db: Session = Depends(get
 
 @router.delete("/{folder_id}", status_code=204)
 def delete_folder(folder_id: UUID, db: Session = Depends(get_db)) -> None:
-    folder = db.scalar(select(Folder).where(Folder.id == folder_id, Folder.owner_id == settings.demo_owner_id))
+    folder = db.scalar(
+        select(Folder).where(Folder.id == folder_id, Folder.owner_id == settings.demo_owner_id)
+    )
     if not folder:
         raise HTTPException(status_code=404, detail="Folder not found")
     db.delete(folder)

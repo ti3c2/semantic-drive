@@ -8,7 +8,6 @@ from pathlib import Path
 
 from PIL import Image
 
-
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff"}
 AUDIO_EXTS = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".webm"}
 VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
@@ -71,7 +70,9 @@ def probe_media(path: Path, media_type: str, mime_type: str) -> MediaInfo:
     width = None
     height = None
     if media_type == "video":
-        video_stream = next((s for s in payload.get("streams", []) if s.get("codec_type") == "video"), None)
+        video_stream = next(
+            (s for s in payload.get("streams", []) if s.get("codec_type") == "video"), None
+        )
         if video_stream:
             width = video_stream.get("width")
             height = video_stream.get("height")

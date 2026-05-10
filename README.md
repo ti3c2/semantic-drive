@@ -86,6 +86,26 @@ npm install
 PUBLIC_API_BASE_URL=http://localhost:8000 npm run dev -- --host 0.0.0.0
 ```
 
+### 5. Formatting and pre-commit
+
+Install frontend tooling:
+
+```bash
+(cd frontend && npm install)
+```
+
+Format the backend with Ruff and the frontend with Prettier:
+
+```bash
+./scripts/format.sh
+```
+
+Install the pre-commit hook:
+
+```bash
+./scripts/install-pre-commit.sh
+```
+
 ## API overview
 
 - `POST /api/assets` upload media

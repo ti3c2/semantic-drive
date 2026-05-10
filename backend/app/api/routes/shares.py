@@ -29,7 +29,9 @@ def _valid_share(token: str, db: Session) -> Share:
     return share
 
 
-def _stream_object(object_name: str, *, content_type: str, filename: str, attachment: bool) -> StreamingResponse:
+def _stream_object(
+    object_name: str, *, content_type: str, filename: str, attachment: bool
+) -> StreamingResponse:
     response = get_object_stream(object_name)
 
     def iterator():
@@ -43,14 +45,20 @@ def _stream_object(object_name: str, *, content_type: str, filename: str, attach
     return StreamingResponse(
         iterator(),
         media_type=content_type,
-        headers={"Content-Disposition": content_disposition_header(filename, attachment=attachment)},
+        headers={
+            "Content-Disposition": content_disposition_header(filename, attachment=attachment)
+        },
     )
 
 
 def _preview_html(token: str, share: Share, *, embed: bool = False) -> str:
     asset = share.asset
     title = escape(asset.display_title or asset.original_filename)
-    thumb = f"{settings.api_base_url}/s/{token}/thumbnail" if asset.thumbnail_key else f"{settings.api_base_url}/s/{token}/raw"
+    thumb = (
+        f"{settings.api_base_url}/s/{token}/thumbnail"
+        if asset.thumbnail_key
+        else f"{settings.api_base_url}/s/{token}/raw"
+    )
     raw = f"{settings.api_base_url}/s/{token}/raw"
     download = f"{settings.api_base_url}/s/{token}/download"
 
@@ -63,7 +71,11 @@ def _preview_html(token: str, share: Share, *, embed: bool = False) -> str:
     else:
         media = f'<a href="{download}">Download {title}</a>'
 
-    download_link = "" if embed or not share.allow_download else f'<a class="button" href="{download}">Download</a>'
+    download_link = (
+        ""
+        if embed or not share.allow_download
+        else f'<a class="button" href="{download}">Download</a>'
+    )
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -107,14 +119,21 @@ def share_thumbnail(token: str, db: Session = Depends(get_db)) -> StreamingRespo
     asset = share.asset
     if not asset.thumbnail_key:
         raise HTTPException(status_code=404, detail="Thumbnail not found")
-    return _stream_object(asset.thumbnail_key, content_type="image/jpeg", filename="thumbnail.jpg", attachment=False)
+    return _stream_object(
+        asset.thumbnail_key, content_type="image/jpeg", filename="thumbnail.jpg", attachment=False
+    )
 
 
 @router.get("/s/{token}/raw")
 def share_raw(token: str, db: Session = Depends(get_db)) -> StreamingResponse:
     share = _valid_share(token, db)
     asset = share.asset
-    return _stream_object(asset.storage_key, content_type=asset.mime_type, filename=asset.original_filename, attachment=False)
+    return _stream_object(
+        asset.storage_key,
+        content_type=asset.mime_type,
+        filename=asset.original_filename,
+        attachment=False,
+    )
 
 
 @router.get("/s/{token}/download")
@@ -123,4 +142,9 @@ def share_download(token: str, db: Session = Depends(get_db)) -> StreamingRespon
     if not share.allow_download:
         raise HTTPException(status_code=403, detail="Download is disabled for this share")
     asset = share.asset
-    return _stream_object(asset.storage_key, content_type=asset.mime_type, filename=asset.original_filename, attachment=True)
+    return _stream_object(
+        asset.storage_key,
+        content_type=asset.mime_type,
+        filename=asset.original_filename,
+        attachment=True,
+    )

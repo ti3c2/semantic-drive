@@ -58,7 +58,9 @@ def fput_file(object_name: str, path: Path, content_type: str | None = None) -> 
 
 
 @retry(stop=stop_after_attempt(4), wait=wait_exponential_jitter(initial=0.5, max=8))
-def put_file(object_name: str, data: BinaryIO, length: int, content_type: str | None = None) -> None:
+def put_file(
+    object_name: str, data: BinaryIO, length: int, content_type: str | None = None
+) -> None:
     ensure_bucket()
     get_minio_client().put_object(
         bucket_name=settings.minio_bucket,

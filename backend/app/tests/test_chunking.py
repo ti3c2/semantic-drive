@@ -1,8 +1,7 @@
 from uuid import uuid4
 
 from app.db.models import Asset, Tag
-from app.services.text_chunking import chunk_text
-from app.services.text_chunking import chunks_for_asset
+from app.services.text_chunking import chunk_text, chunks_for_asset
 
 
 def test_chunk_text_short():

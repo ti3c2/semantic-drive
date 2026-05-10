@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
-    "preview": "astro preview"
+    "preview": "astro preview",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "@astrojs/react": "latest",
@@ -15,6 +17,8 @@
     "react-dom": "latest"
   },
   "devDependencies": {
+    "prettier": "latest",
+    "prettier-plugin-astro": "latest",
     "typescript": "latest"
   }
 }

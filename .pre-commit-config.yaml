@@ -1,0 +1,14 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-format
+        name: Format Python with Ruff
+        entry: scripts/format-python.sh
+        language: script
+        files: ^backend/.*\.py$
+      - id: prettier-format
+        name: Format frontend with Prettier
+        entry: scripts/format-frontend.sh
+        language: script
+        files: ^frontend/.*\.(astro|css|cjs|js|jsx|json|md|mjs|ts|tsx|yaml|yml)$
+        exclude: ^frontend/(\.astro|dist|node_modules)/

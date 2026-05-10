@@ -32,4 +32,8 @@ def get_or_create_tags(db: Session, owner_id: UUID, tag_names: list[str]) -> lis
 def get_folders(db: Session, owner_id: UUID, folder_ids: list[UUID]) -> list[Folder]:
     if not folder_ids:
         return []
-    return list(db.scalars(select(Folder).where(Folder.owner_id == owner_id, Folder.id.in_(folder_ids))).all())
+    return list(
+        db.scalars(
+            select(Folder).where(Folder.owner_id == owner_id, Folder.id.in_(folder_ids))
+        ).all()
+    )

@@ -109,7 +109,9 @@ def test_reindex_asset_search_rebuilds_chunks_and_publishes_progress(monkeypatch
         embedded_texts.extend(batch)
         return [[0.1, 0.2, 0.3] for _text in batch]
 
-    monkeypatch.setattr(assets, "delete_asset_points", lambda asset_id: deleted_asset_ids.append(asset_id))
+    monkeypatch.setattr(
+        assets, "delete_asset_points", lambda asset_id: deleted_asset_ids.append(asset_id)
+    )
     monkeypatch.setattr(assets, "embed_texts", fake_embed_texts)
     monkeypatch.setattr(assets, "point_struct", lambda **kwargs: kwargs)
     monkeypatch.setattr(assets, "upsert_points", lambda points: upserted_batches.append(points))

@@ -127,7 +127,9 @@ def search_assets(body: SearchRequest, db: Session = Depends(get_db)) -> SearchR
                 }
 
     if not best_by_asset:
-        return SearchResponse(query=body.query, took_ms=int((time.perf_counter() - started) * 1000), results=[])
+        return SearchResponse(
+            query=body.query, took_ms=int((time.perf_counter() - started) * 1000), results=[]
+        )
 
     stmt = (
         select(Asset)
@@ -202,4 +204,6 @@ def search_assets(body: SearchRequest, db: Session = Depends(get_db)) -> SearchR
             )
         )
 
-    return SearchResponse(query=body.query, took_ms=int((time.perf_counter() - started) * 1000), results=results)
+    return SearchResponse(
+        query=body.query, took_ms=int((time.perf_counter() - started) * 1000), results=results
+    )

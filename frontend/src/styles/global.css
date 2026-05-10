@@ -1,5 +1,12 @@
 :root {
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
   background: #f7f5f0;
   color: #181817;
 }
@@ -13,7 +20,9 @@ body {
   min-height: 100vh;
 }
 
-button, input, textarea {
+button,
+input,
+textarea {
   font: inherit;
 }
 

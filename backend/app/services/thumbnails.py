@@ -5,11 +5,12 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-
 THUMB_SIZE = (640, 640)
 
 
-def generate_thumbnail(input_path: Path, media_type: str, output_path: Path, label: str | None = None) -> Path:
+def generate_thumbnail(
+    input_path: Path, media_type: str, output_path: Path, label: str | None = None
+) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if media_type == "image":
         return _image_thumbnail(input_path, output_path)

@@ -35,7 +35,9 @@ def _asset_work_dir(asset_id: str) -> Path:
     return path
 
 
-def _set_status(db, asset: Asset, status: str, step: str | None = None, progress: int | None = None) -> None:
+def _set_status(
+    db, asset: Asset, status: str, step: str | None = None, progress: int | None = None
+) -> None:
     asset.processing_status = status
     job = db.scalar(
         select(IngestionJob)
@@ -52,7 +54,9 @@ def _set_status(db, asset: Asset, status: str, step: str | None = None, progress
     publish_asset_event(asset.id, status, step, progress)
 
 
-def _add_extraction(db, asset: Asset, extraction_type: str, text: str, extra: dict | None = None) -> None:
+def _add_extraction(
+    db, asset: Asset, extraction_type: str, text: str, extra: dict | None = None
+) -> None:
     text = (text or "").strip()
     if not text:
         return
@@ -73,7 +77,9 @@ def _transcribe_path(path: Path, work_dir: Path) -> str:
         text = transcribe_audio_file(chunk)
         if text.strip():
             parts.append(text.strip())
-        publish_asset_event(uuid.UUID(work_dir.name), "transcribing", f"transcribed chunk {index}/{len(chunks)}", 45)
+        publish_asset_event(
+            uuid.UUID(work_dir.name), "transcribing", f"transcribed chunk {index}/{len(chunks)}", 45
+        )
     return "\n\n".join(parts)
 
 
@@ -84,7 +90,11 @@ def process_asset(asset_id: str) -> None:
     with SessionLocal() as db:
         asset = db.scalar(
             select(Asset)
-            .options(selectinload(Asset.tags), selectinload(Asset.folders), selectinload(Asset.extractions))
+            .options(
+                selectinload(Asset.tags),
+                selectinload(Asset.folders),
+                selectinload(Asset.extractions),
+            )
             .where(Asset.id == asset_uuid)
         )
         if not asset:
@@ -104,7 +114,9 @@ def process_asset(asset_id: str) -> None:
 
             _set_status(db, asset, "processing", "generating thumbnail", 25)
             thumb_path = work_dir / "thumbnail.jpg"
-            generate_thumbnail(original_path, asset.media_type, thumb_path, label=asset.original_filename)
+            generate_thumbnail(
+                original_path, asset.media_type, thumb_path, label=asset.original_filename
+            )
             thumb_key = f"owners/{asset.owner_id}/assets/{asset.id}/thumbnail.jpg"
             fput_file(thumb_key, thumb_path, content_type="image/jpeg")
             asset.thumbnail_key = thumb_key
@@ -120,7 +132,9 @@ def process_asset(asset_id: str) -> None:
             if asset.media_type == "image":
                 _set_status(db, asset, "extracting", "running OCR and visual caption", 42)
                 result = extract_image_text(original_path, asset.mime_type, asset.original_filename)
-                _add_extraction(db, asset, "ocr", result.get("ocr_text", ""), extra={"source": "openai_vision"})
+                _add_extraction(
+                    db, asset, "ocr", result.get("ocr_text", ""), extra={"source": "openai_vision"}
+                )
                 visual_parts = [
                     result.get("visual_summary", ""),
                     " ".join(result.get("search_keywords") or []),
@@ -137,7 +151,9 @@ def process_asset(asset_id: str) -> None:
             elif asset.media_type == "audio":
                 _set_status(db, asset, "transcribing", "transcribing audio", 42)
                 transcript = _transcribe_path(original_path, work_dir)
-                _add_extraction(db, asset, "transcript", transcript, extra={"source": "openai_transcription"})
+                _add_extraction(
+                    db, asset, "transcript", transcript, extra={"source": "openai_transcription"}
+                )
 
             elif asset.media_type == "video":
                 _set_status(db, asset, "transcribing", "extracting audio from video", 38)
@@ -147,13 +163,19 @@ def process_asset(asset_id: str) -> None:
                     transcript = _transcribe_path(audio_path, work_dir)
                 except subprocess.CalledProcessError:
                     transcript = "Video audio could not be extracted."
-                _add_extraction(db, asset, "transcript", transcript, extra={"source": "openai_transcription"})
+                _add_extraction(
+                    db, asset, "transcript", transcript, extra={"source": "openai_transcription"}
+                )
 
             db.commit()
 
             asset = db.scalar(
                 select(Asset)
-                .options(selectinload(Asset.tags), selectinload(Asset.folders), selectinload(Asset.extractions))
+                .options(
+                    selectinload(Asset.tags),
+                    selectinload(Asset.folders),
+                    selectinload(Asset.extractions),
+                )
                 .where(Asset.id == asset_uuid)
             )
             if not asset:
@@ -193,7 +215,9 @@ def process_asset(asset_id: str) -> None:
                             "chunk_type": chunk.chunk_type,
                             "folder_ids": [str(folder.id) for folder in asset.folders],
                             "tags": [tag.name for tag in asset.tags],
-                            "created_at": asset.created_at.isoformat() if asset.created_at else None,
+                            "created_at": asset.created_at.isoformat()
+                            if asset.created_at
+                            else None,
                             "start_ms": chunk.start_ms,
                             "end_ms": chunk.end_ms,
                             "text_preview": chunk.text[:500],

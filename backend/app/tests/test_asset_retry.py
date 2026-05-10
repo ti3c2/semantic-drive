@@ -30,7 +30,9 @@ def test_enqueue_processing_retry_marks_failed_asset_queued(monkeypatch) -> None
     db = FakeDb()
     enqueued_ids = []
 
-    monkeypatch.setattr(assets, "enqueue_asset_ingestion", lambda asset_id: enqueued_ids.append(asset_id))
+    monkeypatch.setattr(
+        assets, "enqueue_asset_ingestion", lambda asset_id: enqueued_ids.append(asset_id)
+    )
 
     assets._enqueue_processing_retry(asset, db)
 

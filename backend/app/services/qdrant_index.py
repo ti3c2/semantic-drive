@@ -89,7 +89,11 @@ def build_search_filter(
     if tags:
         must.append(models.FieldCondition(key="tags", match=models.MatchAny(any=tags)))
     if folder_ids:
-        must.append(models.FieldCondition(key="folder_ids", match=models.MatchAny(any=[str(v) for v in folder_ids])))
+        must.append(
+            models.FieldCondition(
+                key="folder_ids", match=models.MatchAny(any=[str(v) for v in folder_ids])
+            )
+        )
     return models.Filter(must=must)
 
 

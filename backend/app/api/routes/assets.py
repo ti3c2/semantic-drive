@@ -70,7 +70,9 @@ def asset_urls(asset: Asset) -> dict[str, str | None]:
 
 
 def serialize_asset(asset: Asset) -> AssetOut:
-    return AssetOut.model_validate({**asset.__dict__, **asset_urls(asset), "folders": asset.folders, "tags": asset.tags})
+    return AssetOut.model_validate(
+        {**asset.__dict__, **asset_urls(asset), "folders": asset.folders, "tags": asset.tags}
+    )
 
 
 def serialize_asset_detail(asset: Asset) -> AssetDetailOut:
@@ -85,7 +87,12 @@ def serialize_asset_detail(asset: Asset) -> AssetDetailOut:
             "visual_summary": extraction_map.get("visual_caption"),
             "transcript": extraction_map.get("transcript"),
             "extractions": [
-                {"id": str(item.id), "type": item.extraction_type, "text": item.text, "extra": item.extra}
+                {
+                    "id": str(item.id),
+                    "type": item.extraction_type,
+                    "text": item.text,
+                    "extra": item.extra,
+                }
                 for item in asset.extractions
             ],
         }
@@ -95,7 +102,9 @@ def serialize_asset_detail(asset: Asset) -> AssetDetailOut:
 def _load_asset_detail(asset_id: UUID, db: Session) -> Asset | None:
     return db.scalar(
         select(Asset)
-        .options(selectinload(Asset.tags), selectinload(Asset.folders), selectinload(Asset.extractions))
+        .options(
+            selectinload(Asset.tags), selectinload(Asset.folders), selectinload(Asset.extractions)
+        )
         .where(Asset.id == asset_id, Asset.owner_id == settings.demo_owner_id)
     )
 
@@ -175,7 +184,9 @@ def _reindex_asset_search(asset: Asset, db: Session, previous_status: str) -> No
         asset.processing_status = previous_status
         db.commit()
         publish_asset_event(asset.id, previous_status, f"search refresh failed: {exc}", 0)
-        raise HTTPException(status_code=503, detail="Metadata saved, but search refresh failed") from exc
+        raise HTTPException(
+            status_code=503, detail="Metadata saved, but search refresh failed"
+        ) from exc
 
 
 def _enqueue_processing_retry(asset: Asset, db: Session) -> None:
@@ -197,7 +208,9 @@ def _enqueue_processing_retry(asset: Asset, db: Session) -> None:
         raise HTTPException(status_code=503, detail="Failed to enqueue retry") from exc
 
 
-def _stream_object(object_name: str, *, content_type: str, filename: str, attachment: bool) -> StreamingResponse:
+def _stream_object(
+    object_name: str, *, content_type: str, filename: str, attachment: bool
+) -> StreamingResponse:
     response = get_object_stream(object_name)
 
     def iterator():
@@ -239,7 +252,9 @@ async def upload_asset(
         while chunk := await file.read(1024 * 1024):
             size += len(chunk)
             if size > settings.max_upload_bytes:
-                raise HTTPException(status_code=413, detail=f"Upload exceeds {settings.max_upload_mb} MB")
+                raise HTTPException(
+                    status_code=413, detail=f"Upload exceeds {settings.max_upload_mb} MB"
+                )
             sha.update(chunk)
             handle.write(chunk)
 
@@ -270,7 +285,12 @@ async def upload_asset(
         enqueue_asset_ingestion(asset.id)
     except Exception as exc:
         asset.processing_status = "failed"
-        job = db.scalar(select(IngestionJob).where(IngestionJob.asset_id == asset.id).order_by(IngestionJob.created_at.desc()).limit(1))
+        job = db.scalar(
+            select(IngestionJob)
+            .where(IngestionJob.asset_id == asset.id)
+            .order_by(IngestionJob.created_at.desc())
+            .limit(1)
+        )
         if job:
             job.status = "failed"
             job.error_message = f"Failed to enqueue worker: {exc}"
@@ -319,7 +339,9 @@ def get_asset(asset_id: UUID, db: Session = Depends(get_db)) -> AssetDetailOut:
 def update_asset(asset_id: UUID, body: AssetUpdate, db: Session = Depends(get_db)) -> AssetOut:
     asset = db.scalar(
         select(Asset)
-        .options(selectinload(Asset.tags), selectinload(Asset.folders), selectinload(Asset.extractions))
+        .options(
+            selectinload(Asset.tags), selectinload(Asset.folders), selectinload(Asset.extractions)
+        )
         .where(Asset.id == asset_id, Asset.owner_id == settings.demo_owner_id)
     )
     if not asset:
@@ -411,7 +433,9 @@ def retry_asset_processing(asset_id: UUID, db: Session = Depends(get_db)) -> Ass
 
 @router.delete("/{asset_id}", status_code=204)
 def delete_asset(asset_id: UUID, db: Session = Depends(get_db)) -> None:
-    asset = db.scalar(select(Asset).where(Asset.id == asset_id, Asset.owner_id == settings.demo_owner_id))
+    asset = db.scalar(
+        select(Asset).where(Asset.id == asset_id, Asset.owner_id == settings.demo_owner_id)
+    )
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
     delete_asset_points(asset.id)
@@ -424,32 +448,54 @@ def delete_asset(asset_id: UUID, db: Session = Depends(get_db)) -> None:
 
 @router.get("/{asset_id}/thumbnail")
 def get_thumbnail(asset_id: UUID, db: Session = Depends(get_db)) -> StreamingResponse:
-    asset = db.scalar(select(Asset).where(Asset.id == asset_id, Asset.owner_id == settings.demo_owner_id))
+    asset = db.scalar(
+        select(Asset).where(Asset.id == asset_id, Asset.owner_id == settings.demo_owner_id)
+    )
     if not asset or not asset.thumbnail_key:
         raise HTTPException(status_code=404, detail="Thumbnail not found")
-    return _stream_object(asset.thumbnail_key, content_type="image/jpeg", filename="thumbnail.jpg", attachment=False)
+    return _stream_object(
+        asset.thumbnail_key, content_type="image/jpeg", filename="thumbnail.jpg", attachment=False
+    )
 
 
 @router.get("/{asset_id}/raw")
 def get_raw_asset(asset_id: UUID, db: Session = Depends(get_db)) -> StreamingResponse:
-    asset = db.scalar(select(Asset).where(Asset.id == asset_id, Asset.owner_id == settings.demo_owner_id))
+    asset = db.scalar(
+        select(Asset).where(Asset.id == asset_id, Asset.owner_id == settings.demo_owner_id)
+    )
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
-    return _stream_object(asset.storage_key, content_type=asset.mime_type, filename=asset.original_filename, attachment=False)
+    return _stream_object(
+        asset.storage_key,
+        content_type=asset.mime_type,
+        filename=asset.original_filename,
+        attachment=False,
+    )
 
 
 @router.get("/{asset_id}/download")
 def download_asset(asset_id: UUID, db: Session = Depends(get_db)) -> StreamingResponse:
-    asset = db.scalar(select(Asset).where(Asset.id == asset_id, Asset.owner_id == settings.demo_owner_id))
+    asset = db.scalar(
+        select(Asset).where(Asset.id == asset_id, Asset.owner_id == settings.demo_owner_id)
+    )
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
     content_type = mimetypes.guess_type(asset.original_filename)[0] or asset.mime_type
-    return _stream_object(asset.storage_key, content_type=content_type, filename=asset.original_filename, attachment=True)
+    return _stream_object(
+        asset.storage_key,
+        content_type=content_type,
+        filename=asset.original_filename,
+        attachment=True,
+    )
 
 
 @router.post("/{asset_id}/shares", response_model=CreateShareOut)
-def create_share(asset_id: UUID, body: CreateShareIn, db: Session = Depends(get_db)) -> CreateShareOut:
-    asset = db.scalar(select(Asset).where(Asset.id == asset_id, Asset.owner_id == settings.demo_owner_id))
+def create_share(
+    asset_id: UUID, body: CreateShareIn, db: Session = Depends(get_db)
+) -> CreateShareOut:
+    asset = db.scalar(
+        select(Asset).where(Asset.id == asset_id, Asset.owner_id == settings.demo_owner_id)
+    )
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
 

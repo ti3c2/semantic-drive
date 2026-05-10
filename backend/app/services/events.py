@@ -16,7 +16,9 @@ def redis_client() -> Redis:
     return Redis.from_url(settings.redis_url, decode_responses=True)
 
 
-def publish_asset_event(asset_id: UUID, status: str, step: str | None = None, progress: int | None = None) -> None:
+def publish_asset_event(
+    asset_id: UUID, status: str, step: str | None = None, progress: int | None = None
+) -> None:
     payload = {
         "type": "asset_processing_update",
         "asset_id": str(asset_id),

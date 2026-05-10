@@ -52,8 +52,14 @@ def embed_texts(texts: Iterable[str]) -> list[list[float]]:
     if not clean_texts:
         return []
     if not settings.has_openai:
-        return [deterministic_embedding(text, settings.openai_embedding_dimensions) for text in clean_texts]
+        return [
+            deterministic_embedding(text, settings.openai_embedding_dimensions)
+            for text in clean_texts
+        ]
     try:
         return _embed_with_openai(clean_texts)
     except Exception:
-        return [deterministic_embedding(text, settings.openai_embedding_dimensions) for text in clean_texts]
+        return [
+            deterministic_embedding(text, settings.openai_embedding_dimensions)
+            for text in clean_texts
+        ]

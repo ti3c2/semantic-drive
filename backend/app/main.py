@@ -58,7 +58,9 @@ async def events() -> StreamingResponse:
         pubsub.subscribe(EVENT_CHANNEL)
         try:
             while True:
-                message = await asyncio.to_thread(pubsub.get_message, ignore_subscribe_messages=True, timeout=1.0)
+                message = await asyncio.to_thread(
+                    pubsub.get_message, ignore_subscribe_messages=True, timeout=1.0
+                )
                 if message and message.get("data"):
                     yield f"data: {message['data']}\n\n"
                 else:

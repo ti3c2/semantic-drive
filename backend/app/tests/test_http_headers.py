@@ -12,7 +12,7 @@ def test_content_disposition_header_is_latin1_safe_for_unicode_filename() -> Non
 
     header = content_disposition_header(filename, attachment=False)
 
-    assert header.startswith('inline; filename="download.pdf"; filename*=UTF-8\'\'')
+    assert header.startswith("inline; filename=\"download.pdf\"; filename*=UTF-8''")
     assert quote(filename, safe="") in header
     header.encode("latin-1")
     response = StreamingResponse(
@@ -70,9 +70,7 @@ def test_share_stream_response_accepts_unicode_filename(monkeypatch) -> None:
         attachment=True,
     )
 
-    assert response.headers["content-disposition"].startswith(
-        'attachment; filename="download.jpg"'
-    )
+    assert response.headers["content-disposition"].startswith('attachment; filename="download.jpg"')
     assert quote("шизальтуха.jpg", safe="") in response.headers["content-disposition"]
 
 

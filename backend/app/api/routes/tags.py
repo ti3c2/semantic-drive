@@ -18,13 +18,19 @@ router = APIRouter(prefix="/api/tags", tags=["tags"])
 
 @router.get("", response_model=list[TagOut])
 def list_tags(db: Session = Depends(get_db)) -> list[TagOut]:
-    return list(db.scalars(select(Tag).where(Tag.owner_id == settings.demo_owner_id).order_by(Tag.name)).all())
+    return list(
+        db.scalars(
+            select(Tag).where(Tag.owner_id == settings.demo_owner_id).order_by(Tag.name)
+        ).all()
+    )
 
 
 @router.post("", response_model=TagOut, status_code=201)
 def create_tag(body: TagCreate, db: Session = Depends(get_db)) -> TagOut:
     name = normalize_tag_name(body.name)
-    existing = db.scalar(select(Tag).where(Tag.owner_id == settings.demo_owner_id, Tag.name == name))
+    existing = db.scalar(
+        select(Tag).where(Tag.owner_id == settings.demo_owner_id, Tag.name == name)
+    )
     if existing:
         return existing
     tag = Tag(owner_id=settings.demo_owner_id, name=name)
