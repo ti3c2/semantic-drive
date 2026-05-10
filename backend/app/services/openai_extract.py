@@ -49,6 +49,16 @@ def _data_url(path: Path, mime_type: str | None = None) -> str:
     return f"data:{mime_type};base64,{data}"
 
 
+def _fallback_image_extraction(filename: str, reason: str) -> dict[str, Any]:
+    return {
+        "ocr_text": "",
+        "visual_summary": f"Image asset named {filename}. AI vision indexing was skipped: {reason}.",
+        "search_keywords": [Path(filename).stem],
+        "detected_document_type": "unknown",
+        "confidence_notes": "Fallback extraction. Description, tags, filename, and available metadata remain searchable.",
+    }
+
+
 @retry(stop=stop_after_attempt(3), wait=wait_exponential_jitter(initial=1, max=10))
 def _vision_via_responses(path: Path, mime_type: str) -> str:
     client = settings.get_openai_client()
@@ -88,27 +98,22 @@ def _vision_via_chat(path: Path, mime_type: str) -> str:
 
 def extract_image_text(path: Path, mime_type: str, filename: str) -> dict[str, Any]:
     if not settings.has_openai:
-        return {
-            "ocr_text": "",
-            "visual_summary": f"Image asset named {filename}. OpenAI API key is not configured, so OCR and visual indexing were skipped.",
-            "search_keywords": [Path(filename).stem],
-            "detected_document_type": "unknown",
-            "confidence_notes": "Fallback extraction. Configure OPENAI_API_KEY for real OCR and visual captions.",
-        }
+        return _fallback_image_extraction(filename, "OpenAI API key is not configured")
 
     try:
         raw = _vision_via_responses(path, mime_type)
         return _clean_json(raw)
-    except Exception:
-        raw = _vision_via_chat(path, mime_type)
-        return _clean_json(raw)
+    except Exception as responses_exc:
+        try:
+            raw = _vision_via_chat(path, mime_type)
+            return _clean_json(raw)
+        except Exception as chat_exc:
+            reason = f"{type(responses_exc).__name__}, then {type(chat_exc).__name__}"
+            return _fallback_image_extraction(filename, reason)
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential_jitter(initial=1, max=10))
-def transcribe_audio_file(path: Path) -> str:
-    if not settings.has_openai:
-        return "OpenAI API key is not configured, so transcription was skipped."
-
+def _transcribe_audio_file_via_openai(path: Path) -> str:
     client = settings.get_openai_client()
     with path.open("rb") as handle:
         response = client.audio.transcriptions.create(
@@ -116,6 +121,16 @@ def transcribe_audio_file(path: Path) -> str:
             file=handle,
         )
     return getattr(response, "text", None) or str(response)
+
+
+def transcribe_audio_file(path: Path) -> str:
+    if not settings.has_openai:
+        return "OpenAI API key is not configured, so transcription was skipped."
+
+    try:
+        return _transcribe_audio_file_via_openai(path)
+    except Exception as exc:
+        return f"AI transcription was skipped after retries: {type(exc).__name__}."
 
 
 def extract_audio_from_video(video_path: Path, output_path: Path) -> Path:

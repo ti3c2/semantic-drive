@@ -80,7 +80,11 @@
 .sd-actions button,
 .sd-actions a,
 .sd-drawer-actions button,
-.sd-drawer-actions a {
+.sd-drawer-actions a,
+.sd-file-picker,
+.sd-modal-actions button,
+.sd-file-list button,
+.sd-detail-edit-actions button {
   border: 0;
   border-radius: 14px;
   padding: 10px 14px;
@@ -167,15 +171,50 @@
   font-weight: 800;
 }
 
-.sd-status {
+.sd-status-indicator {
   position: absolute;
   top: 10px;
   left: 10px;
-  padding: 6px 8px;
+  width: 30px;
+  height: 30px;
   background: rgba(17, 17, 16, 0.85);
   color: #fff;
   border-radius: 999px;
-  font-size: 12px;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+}
+
+.sd-status-indicator-failed {
+  background: #9f1d1d;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.sd-spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid rgba(255, 255, 255, 0.38);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: sd-spin 0.72s linear infinite;
+}
+
+@keyframes sd-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.sd-inline-spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: sd-spin 0.72s linear infinite;
+  display: inline-block;
+  flex: 0 0 auto;
 }
 
 .sd-card-body {
@@ -235,6 +274,13 @@
   color: #181817;
 }
 
+.sd-actions button:disabled,
+.sd-drawer-actions button:disabled,
+.sd-detail-edit-actions button:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+
 .sd-drawer {
   position: fixed;
   inset: 16px 16px 16px auto;
@@ -261,8 +307,15 @@
 }
 
 .sd-drawer h2 {
-  margin: 0 40px 18px 0;
+  margin: 0 40px 6px 0;
   letter-spacing: -0.03em;
+}
+
+.sd-detail-meta {
+  margin: 0 40px 18px 0;
+  color: #827b72;
+  font-size: 13px;
+  line-height: 1.35;
 }
 
 .sd-preview {
@@ -285,17 +338,20 @@
   margin: 36px 0;
 }
 
-.sd-detail-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 10px 0;
-  border-bottom: 1px solid #eee9df;
-  color: #5e5850;
+.sd-detail-edit {
+  display: grid;
+  gap: 12px;
+  margin: 14px 0 16px;
 }
 
-.sd-detail-row b {
-  color: #181817;
+.sd-detail-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.sd-detail-edit-actions button {
+  gap: 8px;
+  font-size: 13px;
 }
 
 .sd-drawer-actions {
@@ -338,13 +394,57 @@
   margin-top: 14px;
 }
 
-.sd-extraction h3 {
-  margin: 0 0 8px;
-  font-size: 15px;
+.sd-extraction-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sd-extraction-toggle,
+.sd-extraction-delete {
+  border: 0;
+  border-radius: 12px;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: inherit;
+}
+
+.sd-extraction-toggle {
+  flex: 1;
+  justify-content: flex-start;
+  padding: 8px 10px;
+  background: #f7f5f0;
+  color: #181817;
+  font-weight: 700;
+}
+
+.sd-extraction-toggle span {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #e8e1d6;
+  color: #4d463f;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.sd-extraction-delete {
+  padding: 8px 10px;
+  background: #f1eee7;
+  color: #5f1f1f;
+}
+
+.sd-extraction-delete:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
 }
 
 .sd-extraction pre {
-  margin: 0;
+  margin: 8px 0 0;
   white-space: pre-wrap;
   max-height: 220px;
   overflow: auto;
@@ -354,6 +454,159 @@
   padding: 12px;
   font-size: 13px;
   line-height: 1.5;
+}
+
+.sd-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(17, 17, 16, 0.48);
+}
+
+.sd-upload-modal {
+  position: relative;
+  width: min(560px, 100%);
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #e5e0d8;
+  border-radius: 24px;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.26);
+  padding: 22px;
+  display: grid;
+  gap: 14px;
+}
+
+.sd-upload-modal h2 {
+  margin: 0 44px 2px 0;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+}
+
+.sd-file-picker {
+  justify-self: start;
+}
+
+.sd-upload-drop {
+  min-height: 92px;
+  border: 1.5px dashed #c9c2b7;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  gap: 4px;
+  color: #605b52;
+  background: #f8f6f1;
+}
+
+.sd-upload-drop strong {
+  color: #292622;
+}
+
+.sd-upload-drop span {
+  font-size: 13px;
+}
+
+.sd-file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.sd-file-list li {
+  display: grid;
+  grid-template-columns: 54px 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #eee9df;
+  border-radius: 14px;
+  background: #fbfaf7;
+}
+
+.sd-file-thumb {
+  width: 54px;
+  height: 54px;
+  border-radius: 12px;
+  object-fit: cover;
+  background: #eee9df;
+  display: block;
+}
+
+.sd-file-thumb-placeholder {
+  display: grid;
+  place-items: center;
+  color: #77716a;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.sd-file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 650;
+}
+
+.sd-file-list small {
+  color: #77716a;
+}
+
+.sd-file-list button {
+  padding: 7px 9px;
+  background: #f1eee7;
+  color: #181817;
+}
+
+.sd-field {
+  display: grid;
+  gap: 7px;
+}
+
+.sd-field span {
+  font-size: 13px;
+  font-weight: 700;
+  color: #39352f;
+}
+
+.sd-field input,
+.sd-field textarea {
+  width: 100%;
+  border: 1px solid #ded8ce;
+  border-radius: 14px;
+  padding: 11px 12px;
+  background: #fff;
+  color: #181817;
+  font: inherit;
+  resize: vertical;
+}
+
+.sd-field textarea {
+  min-height: 110px;
+}
+
+.sd-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.sd-modal-actions button:first-child {
+  background: #f1eee7;
+  color: #181817;
+}
+
+.sd-modal-actions button:disabled,
+.sd-upload-button:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
 }
 
 @media (max-width: 820px) {
@@ -380,5 +633,18 @@
 
   .sd-drawer-actions {
     grid-template-columns: 1fr;
+  }
+
+  .sd-file-list li {
+    grid-template-columns: 44px 1fr auto;
+  }
+
+  .sd-file-thumb {
+    width: 44px;
+    height: 44px;
+  }
+
+  .sd-file-list small {
+    display: none;
   }
 }

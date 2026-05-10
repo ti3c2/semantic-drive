@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.api.routes.assets import asset_urls
 from app.core.config import get_settings
-from app.db.models import Asset, AssetChunk
+from app.db.models import Asset, AssetChunk, Tag
 from app.db.session import get_db
 from app.schemas.search import MatchReason, SearchRequest, SearchResponse, SearchResult
 from app.services.cohere_rerank import rerank
@@ -20,40 +20,27 @@ settings = get_settings()
 router = APIRouter(prefix="/api/search", tags=["search"])
 
 
+def _metadata_text(asset: Asset) -> str:
+    parts = [
+        asset.display_title or asset.original_filename,
+        asset.original_filename,
+        asset.description or "",
+        f"Tags: {', '.join(tag.name for tag in asset.tags)}" if asset.tags else "",
+    ]
+    return "\n".join(part for part in parts if part.strip())
+
+
 @router.post("", response_model=SearchResponse)
 def search_assets(body: SearchRequest, db: Session = Depends(get_db)) -> SearchResponse:
     started = time.perf_counter()
-    query_vector = embed_texts([body.query])[0]
-    qdrant_filter = build_search_filter(
-        owner_id=settings.demo_owner_id,
-        media_types=body.filters.media_types,
-        tags=body.filters.tags,
-        folder_ids=body.filters.folder_ids,
-    )
-    points = query_points(query_vector, qdrant_filter, limit=max(body.limit * 6, 50))
-
     best_by_asset: dict[UUID, dict] = {}
-    for point in points:
-        payload = getattr(point, "payload", None) or {}
-        if not payload.get("asset_id"):
-            continue
-        asset_id = UUID(payload["asset_id"])
-        score = float(getattr(point, "score", 0.0) or 0.0)
-        existing = best_by_asset.get(asset_id)
-        if existing is None or score > existing["vector_score"]:
-            best_by_asset[asset_id] = {
-                "asset_id": asset_id,
-                "vector_score": score,
-                "chunk_type": payload.get("chunk_type") or "chunk",
-                "text_preview": payload.get("text_preview") or "",
-                "start_ms": payload.get("start_ms"),
-                "end_ms": payload.get("end_ms"),
-            }
-
 
     # Lightweight lexical boost/fallback. This keeps local dev usable when OpenAI keys are absent
     # and also helps exact OCR/transcript/title matches win instead of getting buried by vector vibes.
-    like = f"%{body.query[:200]}%"
+    raw_query = body.query[:200].strip()
+    tag_query = raw_query.removeprefix("#").strip()
+    like = f"%{raw_query or body.query[:200]}%"
+    tag_like = f"%{tag_query or raw_query or body.query[:200]}%"
     lexical_chunks = db.scalars(
         select(AssetChunk)
         .join(Asset, AssetChunk.asset_id == Asset.id)
@@ -61,6 +48,7 @@ def search_assets(body: SearchRequest, db: Session = Depends(get_db)) -> SearchR
             Asset.owner_id == settings.demo_owner_id,
             or_(
                 AssetChunk.text.ilike(like),
+                AssetChunk.text.ilike(tag_like),
                 Asset.original_filename.ilike(like),
                 Asset.display_title.ilike(like),
                 Asset.description.ilike(like),
@@ -80,6 +68,63 @@ def search_assets(body: SearchRequest, db: Session = Depends(get_db)) -> SearchR
                 "start_ms": chunk.start_ms,
                 "end_ms": chunk.end_ms,
             }
+
+    metadata_assets = db.scalars(
+        select(Asset)
+        .options(selectinload(Asset.tags))
+        .where(
+            Asset.owner_id == settings.demo_owner_id,
+            or_(
+                Asset.original_filename.ilike(like),
+                Asset.display_title.ilike(like),
+                Asset.description.ilike(like),
+                Asset.tags.any(Tag.name.ilike(tag_like)),
+            ),
+        )
+        .limit(50)
+    ).all()
+    for asset in metadata_assets:
+        existing = best_by_asset.get(asset.id)
+        lexical_score = 1.0
+        if existing is None or lexical_score > existing["vector_score"]:
+            best_by_asset[asset.id] = {
+                "asset_id": asset.id,
+                "vector_score": lexical_score,
+                "chunk_type": "metadata",
+                "text_preview": _metadata_text(asset)[:500],
+                "start_ms": None,
+                "end_ms": None,
+            }
+
+    if not best_by_asset:
+        try:
+            query_vector = embed_texts([body.query])[0]
+            qdrant_filter = build_search_filter(
+                owner_id=settings.demo_owner_id,
+                media_types=body.filters.media_types,
+                tags=body.filters.tags,
+                folder_ids=body.filters.folder_ids,
+            )
+            points = query_points(query_vector, qdrant_filter, limit=max(body.limit * 6, 50))
+        except Exception:
+            points = []
+
+        for point in points:
+            payload = getattr(point, "payload", None) or {}
+            if not payload.get("asset_id"):
+                continue
+            asset_id = UUID(payload["asset_id"])
+            score = float(getattr(point, "score", 0.0) or 0.0)
+            existing = best_by_asset.get(asset_id)
+            if existing is None or score > existing["vector_score"]:
+                best_by_asset[asset_id] = {
+                    "asset_id": asset_id,
+                    "vector_score": score,
+                    "chunk_type": payload.get("chunk_type") or "chunk",
+                    "text_preview": payload.get("text_preview") or "",
+                    "start_ms": payload.get("start_ms"),
+                    "end_ms": payload.get("end_ms"),
+                }
 
     if not best_by_asset:
         return SearchResponse(query=body.query, took_ms=int((time.perf_counter() - started) * 1000), results=[])

@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.http_headers import content_disposition_header
 from app.core.config import get_settings
 from app.core.security import hash_share_token
 from app.db.models import Share
@@ -39,11 +40,10 @@ def _stream_object(object_name: str, *, content_type: str, filename: str, attach
             response.close()
             response.release_conn()
 
-    disposition_type = "attachment" if attachment else "inline"
     return StreamingResponse(
         iterator(),
         media_type=content_type,
-        headers={"Content-Disposition": f'{disposition_type}; filename="{filename}"'},
+        headers={"Content-Disposition": content_disposition_header(filename, attachment=attachment)},
     )
 
 

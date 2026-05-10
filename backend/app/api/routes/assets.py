@@ -10,22 +10,33 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.api.http_headers import content_disposition_header
 from app.core.config import get_settings
 from app.core.security import generate_share_token, hash_share_token
-from app.db.models import Asset, AssetExtraction, IngestionJob, Share
+from app.db.models import Asset, AssetChunk, IngestionJob, Share
 from app.db.session import get_db
 from app.schemas.assets import AssetDetailOut, AssetOut, AssetUpdate, CreateShareIn, CreateShareOut
+from app.services.embeddings import embed_texts
+from app.services.events import publish_asset_event
 from app.services.media_probe import detect_media_type, guess_mime_type
-from app.services.qdrant_index import delete_asset_points
+from app.services.qdrant_index import delete_asset_points, point_struct, upsert_points
 from app.services.storage import fput_file, get_object_stream, remove_object
 from app.services.taxonomy import get_folders, get_or_create_tags
+from app.services.text_chunking import chunks_for_asset
 from app.workers.enqueue import enqueue_asset_ingestion
 
 settings = get_settings()
 router = APIRouter(prefix="/api/assets", tags=["assets"])
+
+EXTRACTION_TYPE_ALIASES = {
+    "visual_summary": "visual_caption",
+    "visual_caption": "visual_caption",
+    "ocr": "ocr",
+    "transcript": "transcript",
+}
 
 
 def _safe_filename(filename: str | None) -> str:
@@ -62,6 +73,130 @@ def serialize_asset(asset: Asset) -> AssetOut:
     return AssetOut.model_validate({**asset.__dict__, **asset_urls(asset), "folders": asset.folders, "tags": asset.tags})
 
 
+def serialize_asset_detail(asset: Asset) -> AssetDetailOut:
+    extraction_map = {item.extraction_type: item.text for item in asset.extractions}
+    return AssetDetailOut.model_validate(
+        {
+            **asset.__dict__,
+            **asset_urls(asset),
+            "folders": asset.folders,
+            "tags": asset.tags,
+            "ocr_text": extraction_map.get("ocr"),
+            "visual_summary": extraction_map.get("visual_caption"),
+            "transcript": extraction_map.get("transcript"),
+            "extractions": [
+                {"id": str(item.id), "type": item.extraction_type, "text": item.text, "extra": item.extra}
+                for item in asset.extractions
+            ],
+        }
+    )
+
+
+def _load_asset_detail(asset_id: UUID, db: Session) -> Asset | None:
+    return db.scalar(
+        select(Asset)
+        .options(selectinload(Asset.tags), selectinload(Asset.folders), selectinload(Asset.extractions))
+        .where(Asset.id == asset_id, Asset.owner_id == settings.demo_owner_id)
+    )
+
+
+def _set_asset_processing_status(
+    asset: Asset,
+    db: Session,
+    status: str,
+    step: str,
+    progress: int,
+) -> None:
+    asset.processing_status = status
+    db.commit()
+    publish_asset_event(asset.id, status, step, progress)
+
+
+def _final_reindex_status(previous_status: str) -> str:
+    return "failed" if previous_status == "failed" else "ready"
+
+
+def _reindex_asset_search(asset: Asset, db: Session, previous_status: str) -> None:
+    _set_asset_processing_status(asset, db, "embedding", "refreshing search index", 72)
+    try:
+        delete_asset_points(asset.id)
+        db.execute(delete(AssetChunk).where(AssetChunk.asset_id == asset.id))
+
+        chunks = chunks_for_asset(asset)
+        vectors = embed_texts(chunk.text for chunk in chunks)
+        points = []
+        for chunk, vector in zip(chunks, vectors, strict=False):
+            chunk_id = uuid.uuid4()
+            point_id = uuid.uuid4()
+            db.add(
+                AssetChunk(
+                    id=chunk_id,
+                    asset_id=asset.id,
+                    extraction_id=chunk.extraction_id,
+                    qdrant_point_id=point_id,
+                    chunk_type=chunk.chunk_type,
+                    chunk_index=chunk.chunk_index,
+                    text=chunk.text,
+                    start_ms=chunk.start_ms,
+                    end_ms=chunk.end_ms,
+                )
+            )
+            points.append(
+                point_struct(
+                    point_id=point_id,
+                    vector=vector,
+                    payload={
+                        "owner_id": str(asset.owner_id),
+                        "asset_id": str(asset.id),
+                        "chunk_id": str(chunk_id),
+                        "media_type": asset.media_type,
+                        "chunk_type": chunk.chunk_type,
+                        "folder_ids": [str(folder.id) for folder in asset.folders],
+                        "tags": [tag.name for tag in asset.tags],
+                        "created_at": asset.created_at.isoformat() if asset.created_at else None,
+                        "start_ms": chunk.start_ms,
+                        "end_ms": chunk.end_ms,
+                        "text_preview": chunk.text[:500],
+                    },
+                )
+            )
+
+        db.commit()
+        upsert_points(points)
+        _set_asset_processing_status(
+            asset,
+            db,
+            _final_reindex_status(previous_status),
+            "search index refreshed",
+            100,
+        )
+    except Exception as exc:
+        db.rollback()
+        asset.processing_status = previous_status
+        db.commit()
+        publish_asset_event(asset.id, previous_status, f"search refresh failed: {exc}", 0)
+        raise HTTPException(status_code=503, detail="Metadata saved, but search refresh failed") from exc
+
+
+def _enqueue_processing_retry(asset: Asset, db: Session) -> None:
+    if asset.processing_status != "failed":
+        raise HTTPException(status_code=409, detail="Only failed assets can be retried")
+
+    asset.processing_status = "queued"
+    retry_job = IngestionJob(asset_id=asset.id, status="queued", current_step="retry queued")
+    db.add(retry_job)
+    db.commit()
+
+    try:
+        enqueue_asset_ingestion(asset.id)
+    except Exception as exc:
+        asset.processing_status = "failed"
+        retry_job.status = "failed"
+        retry_job.error_message = f"Failed to enqueue retry: {exc}"
+        db.commit()
+        raise HTTPException(status_code=503, detail="Failed to enqueue retry") from exc
+
+
 def _stream_object(object_name: str, *, content_type: str, filename: str, attachment: bool) -> StreamingResponse:
     response = get_object_stream(object_name)
 
@@ -73,8 +208,7 @@ def _stream_object(object_name: str, *, content_type: str, filename: str, attach
             response.close()
             response.release_conn()
 
-    disposition_type = "attachment" if attachment else "inline"
-    headers = {"Content-Disposition": f'{disposition_type}; filename="{filename}"'}
+    headers = {"Content-Disposition": content_disposition_header(filename, attachment=attachment)}
     return StreamingResponse(iterator(), media_type=content_type, headers=headers)
 
 
@@ -147,6 +281,8 @@ async def upload_asset(
         .options(selectinload(Asset.tags), selectinload(Asset.folders))
         .where(Asset.id == asset.id)
     )
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
     return serialize_asset(asset)
 
 
@@ -173,6 +309,14 @@ def list_assets(
 
 @router.get("/{asset_id}", response_model=AssetDetailOut)
 def get_asset(asset_id: UUID, db: Session = Depends(get_db)) -> AssetDetailOut:
+    asset = _load_asset_detail(asset_id, db)
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return serialize_asset_detail(asset)
+
+
+@router.patch("/{asset_id}", response_model=AssetOut)
+def update_asset(asset_id: UUID, body: AssetUpdate, db: Session = Depends(get_db)) -> AssetOut:
     asset = db.scalar(
         select(Asset)
         .options(selectinload(Asset.tags), selectinload(Asset.folders), selectinload(Asset.extractions))
@@ -181,26 +325,72 @@ def get_asset(asset_id: UUID, db: Session = Depends(get_db)) -> AssetDetailOut:
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
 
-    extraction_map = {item.extraction_type: item.text for item in asset.extractions}
-    return AssetDetailOut.model_validate(
-        {
-            **asset.__dict__,
-            **asset_urls(asset),
-            "folders": asset.folders,
-            "tags": asset.tags,
-            "ocr_text": extraction_map.get("ocr"),
-            "visual_summary": extraction_map.get("visual_caption"),
-            "transcript": extraction_map.get("transcript"),
-            "extractions": [
-                {"id": str(item.id), "type": item.extraction_type, "text": item.text, "extra": item.extra}
-                for item in asset.extractions
-            ],
-        }
+    previous_status = asset.processing_status
+    should_refresh_index = False
+    if body.display_title is not None:
+        asset.display_title = body.display_title
+        should_refresh_index = True
+    if body.description is not None:
+        asset.description = body.description
+        should_refresh_index = True
+    if body.tag_names is not None:
+        asset.tags = get_or_create_tags(db, settings.demo_owner_id, body.tag_names)
+        should_refresh_index = True
+    if body.folder_ids is not None:
+        asset.folders = get_folders(db, settings.demo_owner_id, body.folder_ids)
+        should_refresh_index = True
+
+    if should_refresh_index and previous_status in {"ready", "failed"}:
+        _reindex_asset_search(asset, db, previous_status)
+    else:
+        db.commit()
+    asset = db.scalar(
+        select(Asset)
+        .options(selectinload(Asset.tags), selectinload(Asset.folders))
+        .where(Asset.id == asset.id)
     )
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return serialize_asset(asset)
 
 
-@router.patch("/{asset_id}", response_model=AssetOut)
-def update_asset(asset_id: UUID, body: AssetUpdate, db: Session = Depends(get_db)) -> AssetOut:
+@router.delete("/{asset_id}/extractions/{extraction_type}", response_model=AssetDetailOut)
+def delete_asset_extraction(
+    asset_id: UUID,
+    extraction_type: str,
+    db: Session = Depends(get_db),
+) -> AssetDetailOut:
+    resolved_type = EXTRACTION_TYPE_ALIASES.get(extraction_type)
+    if not resolved_type:
+        raise HTTPException(status_code=404, detail="Extraction not found")
+
+    asset = _load_asset_detail(asset_id, db)
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    previous_status = asset.processing_status
+    matching = [item for item in asset.extractions if item.extraction_type == resolved_type]
+    if not matching:
+        raise HTTPException(status_code=404, detail="Extraction not found")
+
+    for extraction in matching:
+        asset.extractions.remove(extraction)
+        db.delete(extraction)
+    db.flush()
+
+    if previous_status in {"ready", "failed"}:
+        _reindex_asset_search(asset, db, previous_status)
+    else:
+        db.commit()
+
+    asset = _load_asset_detail(asset_id, db)
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return serialize_asset_detail(asset)
+
+
+@router.post("/{asset_id}/retry", response_model=AssetOut)
+def retry_asset_processing(asset_id: UUID, db: Session = Depends(get_db)) -> AssetOut:
     asset = db.scalar(
         select(Asset)
         .options(selectinload(Asset.tags), selectinload(Asset.folders))
@@ -209,17 +399,13 @@ def update_asset(asset_id: UUID, body: AssetUpdate, db: Session = Depends(get_db
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
 
-    if body.display_title is not None:
-        asset.display_title = body.display_title
-    if body.description is not None:
-        asset.description = body.description
-    if body.tag_names is not None:
-        asset.tags = get_or_create_tags(db, settings.demo_owner_id, body.tag_names)
-    if body.folder_ids is not None:
-        asset.folders = get_folders(db, settings.demo_owner_id, body.folder_ids)
+    _enqueue_processing_retry(asset, db)
 
-    db.commit()
-    db.refresh(asset)
+    asset = db.scalar(
+        select(Asset)
+        .options(selectinload(Asset.tags), selectinload(Asset.folders))
+        .where(Asset.id == asset.id)
+    )
     return serialize_asset(asset)
 
 

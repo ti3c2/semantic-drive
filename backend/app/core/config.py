@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     openai_vision_model: str = "gpt-4o-mini"
     openai_transcription_model: str = "gpt-4o-mini-transcribe"
     openai_embedding_model: str = "text-embedding-3-small"
-    openai_emb_api_base: str = openai_api_base
+    openai_emb_api_base: str | None = None
     openai_embedding_dimensions: int = 1536
     openai_use_proxy: bool = False
     proxy_url: str | None = None
@@ -86,7 +86,7 @@ class Settings(BaseSettings):
         return self._get_openai_client(self.openai_api_base)
 
     def get_openai_emb_client(self) -> OpenAI:
-        return self._get_openai_client(self.openai_emb_api_base)
+        return self._get_openai_client(self.openai_emb_api_base or self.openai_api_base)
 
 
 @lru_cache(maxsize=1)
