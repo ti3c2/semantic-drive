@@ -142,7 +142,9 @@
   background: #fff;
   border: 1px solid #e7e1d8;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.05);
-  transition: transform 0.16s ease, box-shadow 0.16s ease;
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease;
 }
 
 .sd-card:hover {
@@ -388,6 +390,90 @@
 
 .sd-share-box textarea {
   min-height: 78px;
+}
+
+.sd-action-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  z-index: 20;
+  max-width: calc(100vw - 32px);
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  border: 1px solid #d8e7dd;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #181817;
+  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.18);
+  font-size: 14px;
+  font-weight: 650;
+  pointer-events: none;
+  animation: sd-toast-in 0.18s ease-out both;
+}
+
+.sd-action-toast-error {
+  border-color: #f0c7c7;
+}
+
+.sd-action-toast-icon {
+  width: 24px;
+  height: 24px;
+  color: #15724b;
+  flex: 0 0 auto;
+}
+
+.sd-action-toast-error .sd-action-toast-icon {
+  color: #9f1d1d;
+}
+
+.sd-action-toast-ring,
+.sd-action-toast-check {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sd-action-toast-ring {
+  stroke-dasharray: 56.6;
+  stroke-dashoffset: 56.6;
+  transform: rotate(-90deg);
+  transform-origin: center;
+  animation: sd-toast-ring 0.62s ease-out forwards;
+}
+
+.sd-action-toast-check {
+  stroke-dasharray: 13;
+  stroke-dashoffset: 13;
+  animation: sd-toast-check 0.22s ease-out 0.46s forwards;
+}
+
+@keyframes sd-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@keyframes sd-toast-ring {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes sd-toast-check {
+  to {
+    stroke-dashoffset: 0;
+  }
 }
 
 .sd-extraction {

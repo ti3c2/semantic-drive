@@ -64,6 +64,12 @@ type DisplayItem = {
   created_at: string;
 };
 
+type ActionFeedback = {
+  id: number;
+  message: string;
+  tone: 'success' | 'error';
+};
+
 function api(path: string) {
   if (path.startsWith('http')) return path;
   return `${API_BASE}${path}`;
@@ -97,7 +103,7 @@ function assetToDisplay(asset: Asset): DisplayItem {
     download_url: asset.download_url,
     status: asset.processing_status,
     tags: asset.tags.map((tag) => tag.name),
-    created_at: asset.created_at
+    created_at: asset.created_at,
   };
 }
 
@@ -114,7 +120,7 @@ function resultToDisplay(result: SearchResult): DisplayItem {
     score: result.score,
     match: result.match_reason,
     tags: result.tags,
-    created_at: result.created_at
+    created_at: result.created_at,
   };
 }
 
@@ -138,8 +144,35 @@ export default function SemanticDriveApp() {
   const [detailTagsDraft, setDetailTagsDraft] = useState('');
   const [savingDetail, setSavingDetail] = useState(false);
   const [deletingExtractions, setDeletingExtractions] = useState<Set<string>>(() => new Set());
+  const [actionFeedback, setActionFeedback] = useState<ActionFeedback | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const selectedIdRef = useRef<string | null>(null);
+  const actionFeedbackTimerRef = useRef<number | null>(null);
+  const actionFeedbackIdRef = useRef(0);
+
+  const showActionFeedback = useCallback(
+    (message: string, tone: ActionFeedback['tone'] = 'success') => {
+      if (actionFeedbackTimerRef.current !== null) {
+        window.clearTimeout(actionFeedbackTimerRef.current);
+      }
+      actionFeedbackIdRef.current += 1;
+      setActionFeedback({ id: actionFeedbackIdRef.current, message, tone });
+      actionFeedbackTimerRef.current = window.setTimeout(() => {
+        setActionFeedback(null);
+        actionFeedbackTimerRef.current = null;
+      }, 2600);
+    },
+    [],
+  );
+
+  const reportActionError = useCallback(
+    (err: unknown, fallbackMessage: string) => {
+      const message = err instanceof Error ? err.message : fallbackMessage;
+      setError(message);
+      showActionFeedback(message, 'error');
+    },
+    [showActionFeedback],
+  );
 
   const addPendingFiles = useCallback((files: File[]) => {
     if (!files.length) return;
@@ -175,6 +208,15 @@ export default function SemanticDriveApp() {
     loadAssets().catch((err) => setError(err.message));
   }, [loadAssets]);
 
+  useEffect(
+    () => () => {
+      if (actionFeedbackTimerRef.current !== null) {
+        window.clearTimeout(actionFeedbackTimerRef.current);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
@@ -186,13 +228,19 @@ export default function SemanticDriveApp() {
       if (payload.type !== 'asset_processing_update') return;
       setAssets((current) =>
         current.map((asset) =>
-          asset.id === payload.asset_id ? { ...asset, processing_status: payload.status } : asset
-        )
+          asset.id === payload.asset_id ? { ...asset, processing_status: payload.status } : asset,
+        ),
       );
       setDetail((current) =>
-        current?.id === payload.asset_id ? { ...current, processing_status: payload.status } : current
+        current?.id === payload.asset_id
+          ? { ...current, processing_status: payload.status }
+          : current,
       );
-      if (payload.status === 'ready' || payload.status === 'failed' || payload.step === 'thumbnail ready') {
+      if (
+        payload.status === 'ready' ||
+        payload.status === 'failed' ||
+        payload.step === 'thumbnail ready'
+      ) {
         loadAssets().catch(() => undefined);
         if (selectedIdRef.current === payload.asset_id) {
           fetchAssetDetail(payload.asset_id)
@@ -243,7 +291,9 @@ export default function SemanticDriveApp() {
   }, [detail?.id]);
 
   const displayed = useMemo(() => {
-    const source: DisplayItem[] = query.trim() ? results.map(resultToDisplay) : assets.map(assetToDisplay);
+    const source: DisplayItem[] = query.trim()
+      ? results.map(resultToDisplay)
+      : assets.map(assetToDisplay);
     if (activeType === 'all') return source;
     return source.filter((item) => item.media_type === activeType);
   }, [assets, results, query, activeType]);
@@ -257,10 +307,12 @@ export default function SemanticDriveApp() {
     );
   }, [detail, detailDescriptionDraft, detailTagNames]);
 
-  const hasLiveWork = useMemo(() => (
-    assets.some((asset) => isLiveStatus(asset.processing_status)) ||
-    Boolean(detail && isLiveStatus(detail.processing_status))
-  ), [assets, detail]);
+  const hasLiveWork = useMemo(
+    () =>
+      assets.some((asset) => isLiveStatus(asset.processing_status)) ||
+      Boolean(detail && isLiveStatus(detail.processing_status)),
+    [assets, detail],
+  );
 
   useEffect(() => {
     if (!hasLiveWork) return;
@@ -299,14 +351,11 @@ export default function SemanticDriveApp() {
     event.preventDefault();
     await uploadFiles(pendingFiles, {
       description: uploadDescription,
-      tags: uploadTags
+      tags: uploadTags,
     });
   }
 
-  async function uploadFiles(
-    files: File[],
-    metadata: { description: string; tags: string }
-  ) {
+  async function uploadFiles(files: File[], metadata: { description: string; tags: string }) {
     if (!files.length) return;
     setUploading(true);
     setError(null);
@@ -354,8 +403,8 @@ export default function SemanticDriveApp() {
           query: trimmed,
           filters: { media_types: activeType === 'all' ? [] : [activeType] },
           limit: 50,
-          rerank: true
-        })
+          rerank: true,
+        }),
       });
       if (!response.ok) throw new Error('Search failed');
       const payload = await response.json();
@@ -372,12 +421,13 @@ export default function SemanticDriveApp() {
     const response = await fetch(api(`/api/assets/${assetId}/shares`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ allow_download: true })
+      body: JSON.stringify({ allow_download: true }),
     });
     if (!response.ok) throw new Error('Could not create share link');
     const payload = await response.json();
     setSharePayload(payload);
-    await navigator.clipboard.writeText(payload.share_url);
+    await copyTextToClipboard(payload.share_url);
+    showActionFeedback('Share link copied to clipboard');
   }
 
   async function saveDetailMetadata(event: FormEvent) {
@@ -387,11 +437,13 @@ export default function SemanticDriveApp() {
     const previousStatus = detail.processing_status;
     setSavingDetail(true);
     setError(null);
-    setDetail((current) => (current?.id === assetId ? { ...current, processing_status: 'embedding' } : current));
+    setDetail((current) =>
+      current?.id === assetId ? { ...current, processing_status: 'embedding' } : current,
+    );
     setAssets((current) =>
       current.map((asset) =>
-        asset.id === assetId ? { ...asset, processing_status: 'embedding' } : asset
-      )
+        asset.id === assetId ? { ...asset, processing_status: 'embedding' } : asset,
+      ),
     );
     try {
       const response = await fetch(api(`/api/assets/${assetId}`), {
@@ -399,8 +451,8 @@ export default function SemanticDriveApp() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           description: detailDescriptionDraft.trim(),
-          tag_names: detailTagNames
-        })
+          tag_names: detailTagNames,
+        }),
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
@@ -413,8 +465,8 @@ export default function SemanticDriveApp() {
         current.map((result) =>
           result.asset_id === asset.id
             ? { ...result, title: asset.display_title || asset.original_filename, tags: tagNames }
-            : result
-        )
+            : result,
+        ),
       );
       setDetail((current) => (current?.id === asset.id ? { ...current, ...asset } : current));
       setDetailDescriptionDraft(asset.description ?? '');
@@ -423,11 +475,13 @@ export default function SemanticDriveApp() {
         await runSearch();
       }
     } catch (err) {
-      setDetail((current) => (current?.id === assetId ? { ...current, processing_status: previousStatus } : current));
+      setDetail((current) =>
+        current?.id === assetId ? { ...current, processing_status: previousStatus } : current,
+      );
       setAssets((current) =>
         current.map((asset) =>
-          asset.id === assetId ? { ...asset, processing_status: previousStatus } : asset
-        )
+          asset.id === assetId ? { ...asset, processing_status: previousStatus } : asset,
+        ),
       );
       setError(err instanceof Error ? err.message : 'Could not save metadata');
     } finally {
@@ -441,15 +495,17 @@ export default function SemanticDriveApp() {
     const previousStatus = detail.processing_status;
     setDeletingExtractions((current) => new Set(current).add(extractionType));
     setError(null);
-    setDetail((current) => (current?.id === assetId ? { ...current, processing_status: 'embedding' } : current));
+    setDetail((current) =>
+      current?.id === assetId ? { ...current, processing_status: 'embedding' } : current,
+    );
     setAssets((current) =>
       current.map((asset) =>
-        asset.id === assetId ? { ...asset, processing_status: 'embedding' } : asset
-      )
+        asset.id === assetId ? { ...asset, processing_status: 'embedding' } : asset,
+      ),
     );
     try {
       const response = await fetch(api(`/api/assets/${assetId}/extractions/${extractionType}`), {
-        method: 'DELETE'
+        method: 'DELETE',
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
@@ -458,17 +514,19 @@ export default function SemanticDriveApp() {
       const nextDetail = (await response.json()) as AssetDetail;
       setDetail(nextDetail);
       setAssets((current) =>
-        current.map((asset) => (asset.id === nextDetail.id ? nextDetail : asset))
+        current.map((asset) => (asset.id === nextDetail.id ? nextDetail : asset)),
       );
       if (query.trim()) {
         await runSearch();
       }
     } catch (err) {
-      setDetail((current) => (current?.id === assetId ? { ...current, processing_status: previousStatus } : current));
+      setDetail((current) =>
+        current?.id === assetId ? { ...current, processing_status: previousStatus } : current,
+      );
       setAssets((current) =>
         current.map((asset) =>
-          asset.id === assetId ? { ...asset, processing_status: previousStatus } : asset
-        )
+          asset.id === assetId ? { ...asset, processing_status: previousStatus } : asset,
+        ),
       );
       setError(err instanceof Error ? err.message : 'Could not delete extraction');
     } finally {
@@ -507,7 +565,8 @@ export default function SemanticDriveApp() {
   }
 
   async function copyRawUrl(path: string) {
-    await navigator.clipboard.writeText(api(path));
+    await copyTextToClipboard(api(path));
+    showActionFeedback('Link copied to clipboard');
   }
 
   async function copyImageToClipboard(item: DisplayItem) {
@@ -516,10 +575,11 @@ export default function SemanticDriveApp() {
       return;
     }
     try {
-      const blob = await fetch(api(item.raw_url)).then((response) => response.blob());
-      await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+      await copyImageUrlToClipboard(api(item.raw_url));
+      showActionFeedback('Image copied to clipboard');
     } catch {
-      await copyRawUrl(item.raw_url);
+      await copyTextToClipboard(api(item.raw_url));
+      showActionFeedback('Image URL copied to clipboard');
     }
   }
 
@@ -527,10 +587,30 @@ export default function SemanticDriveApp() {
     <main className="sd-app">
       <aside className="sd-sidebar">
         <div className="sd-logo">Semantic Drive</div>
-        <button className={activeType === 'all' ? 'active' : ''} onClick={() => setActiveType('all')}>All</button>
-        <button className={activeType === 'image' ? 'active' : ''} onClick={() => setActiveType('image')}>Images</button>
-        <button className={activeType === 'video' ? 'active' : ''} onClick={() => setActiveType('video')}>Videos</button>
-        <button className={activeType === 'audio' ? 'active' : ''} onClick={() => setActiveType('audio')}>Audio</button>
+        <button
+          className={activeType === 'all' ? 'active' : ''}
+          onClick={() => setActiveType('all')}
+        >
+          All
+        </button>
+        <button
+          className={activeType === 'image' ? 'active' : ''}
+          onClick={() => setActiveType('image')}
+        >
+          Images
+        </button>
+        <button
+          className={activeType === 'video' ? 'active' : ''}
+          onClick={() => setActiveType('video')}
+        >
+          Videos
+        </button>
+        <button
+          className={activeType === 'audio' ? 'active' : ''}
+          onClick={() => setActiveType('audio')}
+        >
+          Audio
+        </button>
         <div className="sd-sidebar-note">Paste, drop, search. No ceremonial onboarding parade.</div>
       </aside>
 
@@ -545,7 +625,11 @@ export default function SemanticDriveApp() {
             />
             <button disabled={searching}>{searching ? 'Searching...' : 'Search'}</button>
           </form>
-          <button className="sd-upload-button" onClick={() => setUploadModalOpen(true)} disabled={uploading}>
+          <button
+            className="sd-upload-button"
+            onClick={() => setUploadModalOpen(true)}
+            disabled={uploading}
+          >
             {uploading ? 'Uploading...' : 'Upload'}
           </button>
           <input
@@ -567,13 +651,17 @@ export default function SemanticDriveApp() {
           }}
         >
           <strong>Drop files here</strong>
-          <span>Images get OCR/captions, audio gets transcript, videos get audio transcription.</span>
+          <span>
+            Images get OCR/captions, audio gets transcript, videos get audio transcription.
+          </span>
         </div>
 
         {error && <div className="sd-error">{error}</div>}
 
         <div className="sd-result-count">
-          {query.trim() ? `${displayed.length} semantic result${displayed.length === 1 ? '' : 's'}` : `${displayed.length} file${displayed.length === 1 ? '' : 's'}`}
+          {query.trim()
+            ? `${displayed.length} semantic result${displayed.length === 1 ? '' : 's'}`
+            : `${displayed.length} file${displayed.length === 1 ? '' : 's'}`}
         </div>
 
         <section className="sd-grid">
@@ -593,13 +681,37 @@ export default function SemanticDriveApp() {
                   <span>{item.media_type}</span>
                   {typeof item.score === 'number' && <span>{Math.round(item.score * 100)}%</span>}
                 </div>
-                {item.match && <p className="sd-match">{item.match.type}: {item.match.text}</p>}
-                {!!item.tags.length && <div className="sd-tags">{item.tags.slice(0, 4).map((tag) => <span key={tag}>#{tag}</span>)}</div>}
+                {item.match && (
+                  <p className="sd-match">
+                    {item.match.type}: {item.match.text}
+                  </p>
+                )}
+                {!!item.tags.length && (
+                  <div className="sd-tags">
+                    {item.tags.slice(0, 4).map((tag) => (
+                      <span key={tag}>#{tag}</span>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="sd-actions" onClick={(event) => event.stopPropagation()}>
-                <button onClick={() => copyImageToClipboard(item)}>Copy</button>
+                <button
+                  onClick={() =>
+                    copyImageToClipboard(item).catch((err) => reportActionError(err, 'Copy failed'))
+                  }
+                >
+                  Copy
+                </button>
                 <a href={api(item.download_url)}>Download</a>
-                <button onClick={() => createShare(item.id).catch((err) => setError(err.message))}>Share</button>
+                <button
+                  onClick={() =>
+                    createShare(item.id).catch((err) =>
+                      reportActionError(err, 'Could not create share link'),
+                    )
+                  }
+                >
+                  Share
+                </button>
                 {item.status === 'failed' && (
                   <button
                     onClick={() => retryProcessing(item.id)}
@@ -616,14 +728,33 @@ export default function SemanticDriveApp() {
 
       {detail && (
         <aside className="sd-drawer">
-          <button className="sd-close" onClick={() => { setSelectedId(null); setSharePayload(null); }}>×</button>
+          <button
+            className="sd-close"
+            onClick={() => {
+              setSelectedId(null);
+              setSharePayload(null);
+            }}
+          >
+            ×
+          </button>
           <h2>{detail.display_title || detail.original_filename}</h2>
           <div className="sd-detail-meta">
             {detail.mime_type} · {formatBytes(detail.file_size_bytes)} · {detail.processing_status}
           </div>
           <div className="sd-preview">
-            {detail.media_type === 'image' && <img src={api(detail.raw_url)} alt={detail.display_title || detail.original_filename} />}
-            {detail.media_type === 'video' && <video src={api(detail.raw_url)} poster={detail.thumbnail_url ? api(detail.thumbnail_url) : undefined} controls />}
+            {detail.media_type === 'image' && (
+              <img
+                src={api(detail.raw_url)}
+                alt={detail.display_title || detail.original_filename}
+              />
+            )}
+            {detail.media_type === 'video' && (
+              <video
+                src={api(detail.raw_url)}
+                poster={detail.thumbnail_url ? api(detail.thumbnail_url) : undefined}
+                controls
+              />
+            )}
             {detail.media_type === 'audio' && <audio src={api(detail.raw_url)} controls />}
           </div>
           <form className="sd-detail-edit" onSubmit={saveDetailMetadata}>
@@ -652,9 +783,23 @@ export default function SemanticDriveApp() {
             </div>
           </form>
           <div className="sd-drawer-actions">
-            <button onClick={() => copyRawUrl(detail.raw_url)}>Copy raw URL</button>
+            <button
+              onClick={() =>
+                copyRawUrl(detail.raw_url).catch((err) => reportActionError(err, 'Copy failed'))
+              }
+            >
+              Copy raw URL
+            </button>
             <a href={api(detail.download_url)}>Download</a>
-            <button onClick={() => createShare(detail.id).catch((err) => setError(err.message))}>Copy share link</button>
+            <button
+              onClick={() =>
+                createShare(detail.id).catch((err) =>
+                  reportActionError(err, 'Could not create share link'),
+                )
+              }
+            >
+              Copy share link
+            </button>
             {detail.processing_status === 'failed' && (
               <button
                 onClick={() => retryProcessing(detail.id)}
@@ -667,8 +812,17 @@ export default function SemanticDriveApp() {
           {sharePayload && (
             <div className="sd-share-box">
               <strong>Share copied</strong>
-              <input readOnly value={String(sharePayload.share_url || '')} onFocus={(event) => event.currentTarget.select()} />
-              <textarea readOnly value={String((sharePayload.embed as unknown as Record<string, string>)?.iframe || '')} />
+              <input
+                readOnly
+                value={String(sharePayload.share_url || '')}
+                onFocus={(event) => event.currentTarget.select()}
+              />
+              <textarea
+                readOnly
+                value={String(
+                  (sharePayload.embed as unknown as Record<string, string>)?.iframe || '',
+                )}
+              />
             </div>
           )}
           <Extraction
@@ -692,12 +846,32 @@ export default function SemanticDriveApp() {
         </aside>
       )}
 
+      {actionFeedback && (
+        <div
+          key={actionFeedback.id}
+          className={`sd-action-toast sd-action-toast-${actionFeedback.tone}`}
+          role="status"
+          aria-live="polite"
+        >
+          <svg className="sd-action-toast-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <circle className="sd-action-toast-ring" cx="12" cy="12" r="9" />
+            <path className="sd-action-toast-check" d="M7.6 12.3l2.9 2.9 5.9-6.4" />
+          </svg>
+          <span>{actionFeedback.message}</span>
+        </div>
+      )}
+
       {uploadModalOpen && (
-        <div className="sd-modal-backdrop" onMouseDown={(event) => {
-          if (event.target === event.currentTarget) closeUploadModal();
-        }}>
+        <div
+          className="sd-modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeUploadModal();
+          }}
+        >
           <form className="sd-upload-modal" onSubmit={submitUpload}>
-            <button type="button" className="sd-close" onClick={closeUploadModal}>×</button>
+            <button type="button" className="sd-close" onClick={closeUploadModal}>
+              ×
+            </button>
             <h2>Upload content</h2>
 
             <button
@@ -717,7 +891,9 @@ export default function SemanticDriveApp() {
               }}
             >
               <strong>Drop files</strong>
-              <span>{pendingFiles.length ? `${pendingFiles.length} selected` : 'No files selected'}</span>
+              <span>
+                {pendingFiles.length ? `${pendingFiles.length} selected` : 'No files selected'}
+              </span>
             </div>
 
             {!!pendingFiles.length && (
@@ -726,8 +902,12 @@ export default function SemanticDriveApp() {
                   <li key={fileKey(file)}>
                     <PendingFileThumb file={file} />
                     <span className="sd-file-name">{file.name}</span>
-                    <small>{file.type || 'file'} · {formatBytes(file.size)}</small>
-                    <button type="button" onClick={() => removePendingFile(index)}>Remove</button>
+                    <small>
+                      {file.type || 'file'} · {formatBytes(file.size)}
+                    </small>
+                    <button type="button" onClick={() => removePendingFile(index)}>
+                      Remove
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -753,7 +933,9 @@ export default function SemanticDriveApp() {
             </label>
 
             <div className="sd-modal-actions">
-              <button type="button" onClick={closeUploadModal} disabled={uploading}>Cancel</button>
+              <button type="button" onClick={closeUploadModal} disabled={uploading}>
+                Cancel
+              </button>
               <button type="submit" disabled={uploading || !pendingFiles.length}>
                 {uploading ? 'Uploading...' : 'Upload'}
               </button>
@@ -763,6 +945,85 @@ export default function SemanticDriveApp() {
       )}
     </main>
   );
+}
+
+async function copyTextToClipboard(text: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const activeElement =
+    document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  textarea.style.top = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand('copy');
+  textarea.remove();
+  activeElement?.focus();
+  if (!copied) throw new Error('Clipboard is unavailable');
+}
+
+async function copyImageUrlToClipboard(url: string) {
+  if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') {
+    throw new Error('Image clipboard is unavailable');
+  }
+
+  const response = await fetch(url);
+  if (!response.ok) throw new Error('Could not load image for copying');
+  const sourceBlob = await response.blob();
+  const clipboardBlob =
+    sourceBlob.type === 'image/png' ? sourceBlob : await convertImageBlobToPng(sourceBlob);
+  await navigator.clipboard.write([
+    new ClipboardItem({
+      'image/png': clipboardBlob,
+    }),
+  ]);
+}
+
+async function convertImageBlobToPng(blob: Blob) {
+  const image = await loadImageFromBlob(blob);
+  const width = image.naturalWidth || image.width;
+  const height = image.naturalHeight || image.height;
+  if (!width || !height) throw new Error('Could not read image dimensions');
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Could not prepare image for copying');
+  context.drawImage(image, 0, 0, width, height);
+
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((pngBlob) => {
+      if (pngBlob) {
+        resolve(pngBlob);
+      } else {
+        reject(new Error('Could not prepare image for copying'));
+      }
+    }, 'image/png');
+  });
+}
+
+function loadImageFromBlob(blob: Blob) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Could not read image for copying'));
+    };
+    image.src = url;
+  });
 }
 
 function fileKey(file: File) {
@@ -804,16 +1065,32 @@ function PendingFileThumb({ file }: { file: File }) {
     return <img className="sd-file-thumb" src={previewUrl} alt="" />;
   }
 
-  return <span className="sd-file-thumb sd-file-thumb-placeholder">{file.type.split('/')[0] || 'file'}</span>;
+  return (
+    <span className="sd-file-thumb sd-file-thumb-placeholder">
+      {file.type.split('/')[0] || 'file'}
+    </span>
+  );
 }
 
 function StatusIndicator({ status }: { status?: string }) {
   if (!status || status === 'ready') return null;
   if (status === 'failed') {
-    return <span className="sd-status-indicator sd-status-indicator-failed" title="Processing failed" aria-label="Processing failed">!</span>;
+    return (
+      <span
+        className="sd-status-indicator sd-status-indicator-failed"
+        title="Processing failed"
+        aria-label="Processing failed"
+      >
+        !
+      </span>
+    );
   }
   return (
-    <span className="sd-status-indicator sd-status-indicator-active" title={status} aria-label={`Processing status: ${status}`}>
+    <span
+      className="sd-status-indicator sd-status-indicator-active"
+      title={status}
+      aria-label={`Processing status: ${status}`}
+    >
       <span className="sd-spinner" />
     </span>
   );
@@ -827,7 +1104,7 @@ function Extraction({
   title,
   text,
   deleting,
-  onDelete
+  onDelete,
 }: {
   title: string;
   text?: string | null;
