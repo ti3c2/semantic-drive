@@ -1035,13 +1035,6 @@ export default function SemanticDriveApp() {
               autoFocus
             />
           </form>
-          <button
-            className="sd-upload-button"
-            onClick={() => setUploadModalOpen(true)}
-            disabled={uploading}
-          >
-            {uploading ? 'Uploading...' : 'Upload'}
-          </button>
           <input
             ref={fileInputRef}
             type="file"
@@ -1055,6 +1048,19 @@ export default function SemanticDriveApp() {
         {!isTrashView && (
           <div
             className="sd-dropzone"
+            role="button"
+            tabIndex={uploading ? -1 : 0}
+            aria-disabled={uploading}
+            onClick={() => {
+              if (!uploading) fileInputRef.current?.click();
+            }}
+            onKeyDown={(event) => {
+              if (uploading) return;
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                fileInputRef.current?.click();
+              }
+            }}
             onDragOver={(event) => event.preventDefault()}
             onDrop={(event) => {
               event.preventDefault();
@@ -1374,16 +1380,21 @@ export default function SemanticDriveApp() {
             </button>
             <h2>Upload content</h2>
 
-            <button
-              type="button"
-              className="sd-file-picker"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              Choose files
-            </button>
-
             <div
               className="sd-upload-drop"
+              role="button"
+              tabIndex={uploading ? -1 : 0}
+              aria-disabled={uploading}
+              onClick={() => {
+                if (!uploading) fileInputRef.current?.click();
+              }}
+              onKeyDown={(event) => {
+                if (uploading) return;
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  fileInputRef.current?.click();
+                }
+              }}
               onDragOver={(event) => event.preventDefault()}
               onDrop={(event) => {
                 event.preventDefault();
