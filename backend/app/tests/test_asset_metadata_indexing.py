@@ -87,6 +87,73 @@ def test_delete_asset_extraction_removes_detail_text_before_reindex(monkeypatch)
     assert reindexed_extraction_types == [[]]
 
 
+def test_delete_asset_moves_to_trash_without_removing_storage(monkeypatch) -> None:
+    asset = make_asset()
+    asset.thumbnail_key = "owners/demo/assets/scan-thumb.jpg"
+    asset.preview_key = "owners/demo/assets/scan-preview.jpg"
+    db = FakeRouteDb(asset)
+    deleted_asset_ids = []
+    removed_objects = []
+
+    monkeypatch.setattr(
+        assets, "delete_asset_points", lambda asset_id: deleted_asset_ids.append(asset_id)
+    )
+    monkeypatch.setattr(assets, "remove_object", lambda key: removed_objects.append(key))
+
+    assets.delete_asset(asset.id, db)
+
+    assert asset.trashed_at is not None
+    assert deleted_asset_ids == [asset.id]
+    assert removed_objects == []
+    assert db.deleted == []
+    assert db.commits == 1
+
+
+def test_restore_asset_clears_trash_and_reindexes_ready_asset(monkeypatch) -> None:
+    asset = make_asset()
+    asset.trashed_at = datetime.now(timezone.utc)
+    db = FakeRouteDb(asset)
+    reindexed = []
+
+    monkeypatch.setattr(
+        assets,
+        "_reindex_asset_search",
+        lambda item, _db, previous_status: reindexed.append((item.id, previous_status)),
+    )
+
+    result = assets.restore_asset(asset.id, db)
+
+    assert result.trashed_at is None
+    assert asset.trashed_at is None
+    assert reindexed == [(asset.id, "ready")]
+
+
+def test_purge_asset_removes_trashed_asset_storage_and_row(monkeypatch) -> None:
+    asset = make_asset()
+    asset.trashed_at = datetime.now(timezone.utc)
+    asset.thumbnail_key = "owners/demo/assets/scan-thumb.jpg"
+    asset.preview_key = "owners/demo/assets/scan-preview.jpg"
+    db = FakeRouteDb(asset)
+    deleted_asset_ids = []
+    removed_objects = []
+
+    monkeypatch.setattr(
+        assets, "delete_asset_points", lambda asset_id: deleted_asset_ids.append(asset_id)
+    )
+    monkeypatch.setattr(assets, "remove_object", lambda key: removed_objects.append(key))
+
+    assets.purge_asset(asset.id, db)
+
+    assert deleted_asset_ids == [asset.id]
+    assert removed_objects == [
+        asset.storage_key,
+        asset.thumbnail_key,
+        asset.preview_key,
+    ]
+    assert db.deleted == [asset]
+    assert db.commits == 1
+
+
 def test_reindex_asset_search_rebuilds_chunks_and_publishes_progress(monkeypatch) -> None:
     asset = make_asset()
     asset.extractions = [
@@ -137,6 +204,7 @@ class FakeRouteDb:
         self.asset = asset
         self.deleted = []
         self.flushes = 0
+        self.commits = 0
 
     def scalar(self, _stmt):
         return self.asset
@@ -146,6 +214,9 @@ class FakeRouteDb:
 
     def flush(self) -> None:
         self.flushes += 1
+
+    def commit(self) -> None:
+        self.commits += 1
 
 
 class FakeIndexDb:

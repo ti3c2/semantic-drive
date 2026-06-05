@@ -110,9 +110,12 @@ Install the pre-commit hook:
 
 - `POST /api/assets` upload media
 - `GET /api/assets` list assets
+- `GET /api/assets?trashed=true` list trashed assets
 - `GET /api/assets/{id}` asset detail
 - `PATCH /api/assets/{id}` update metadata
-- `DELETE /api/assets/{id}` delete asset
+- `DELETE /api/assets/{id}` move asset to trash
+- `POST /api/assets/{id}/restore` restore asset from trash
+- `DELETE /api/assets/{id}/purge` permanently delete a trashed asset
 - `POST /api/search` semantic search
 - `POST /api/assets/{id}/shares` create share link
 - `GET /s/{token}` share preview page

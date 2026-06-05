@@ -99,13 +99,22 @@ def serialize_asset_detail(asset: Asset) -> AssetDetailOut:
     )
 
 
-def _load_asset_detail(asset_id: UUID, db: Session) -> Asset | None:
+def _trash_clause(trashed: bool):
+    return Asset.trashed_at.is_not(None) if trashed else Asset.trashed_at.is_(None)
+
+
+def _load_asset_detail(
+    asset_id: UUID, db: Session, *, include_trashed: bool = False
+) -> Asset | None:
+    filters = [Asset.id == asset_id, Asset.owner_id == settings.demo_owner_id]
+    if not include_trashed:
+        filters.append(Asset.trashed_at.is_(None))
     return db.scalar(
         select(Asset)
         .options(
             selectinload(Asset.tags), selectinload(Asset.folders), selectinload(Asset.extractions)
         )
-        .where(Asset.id == asset_id, Asset.owner_id == settings.demo_owner_id)
+        .where(*filters)
     )
 
 
@@ -311,12 +320,13 @@ def list_assets(
     db: Session = Depends(get_db),
     media_type: str | None = Query(default=None),
     q: str | None = Query(default=None),
+    trashed: bool = Query(default=False),
     limit: int = Query(default=100, ge=1, le=500),
 ) -> list[AssetOut]:
     stmt = (
         select(Asset)
         .options(selectinload(Asset.tags), selectinload(Asset.folders))
-        .where(Asset.owner_id == settings.demo_owner_id)
+        .where(Asset.owner_id == settings.demo_owner_id, _trash_clause(trashed))
         .order_by(Asset.created_at.desc())
         .limit(limit)
     )
@@ -342,7 +352,11 @@ def update_asset(asset_id: UUID, body: AssetUpdate, db: Session = Depends(get_db
         .options(
             selectinload(Asset.tags), selectinload(Asset.folders), selectinload(Asset.extractions)
         )
-        .where(Asset.id == asset_id, Asset.owner_id == settings.demo_owner_id)
+        .where(
+            Asset.id == asset_id,
+            Asset.owner_id == settings.demo_owner_id,
+            Asset.trashed_at.is_(None),
+        )
     )
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
@@ -416,7 +430,11 @@ def retry_asset_processing(asset_id: UUID, db: Session = Depends(get_db)) -> Ass
     asset = db.scalar(
         select(Asset)
         .options(selectinload(Asset.tags), selectinload(Asset.folders))
-        .where(Asset.id == asset_id, Asset.owner_id == settings.demo_owner_id)
+        .where(
+            Asset.id == asset_id,
+            Asset.owner_id == settings.demo_owner_id,
+            Asset.trashed_at.is_(None),
+        )
     )
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
@@ -438,6 +456,51 @@ def delete_asset(asset_id: UUID, db: Session = Depends(get_db)) -> None:
     )
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
+    if asset.trashed_at is None:
+        asset.trashed_at = datetime.now(timezone.utc)
+        delete_asset_points(asset.id)
+    db.commit()
+
+
+@router.post("/{asset_id}/restore", response_model=AssetOut)
+def restore_asset(asset_id: UUID, db: Session = Depends(get_db)) -> AssetOut:
+    asset = db.scalar(
+        select(Asset)
+        .options(
+            selectinload(Asset.tags), selectinload(Asset.folders), selectinload(Asset.extractions)
+        )
+        .where(Asset.id == asset_id, Asset.owner_id == settings.demo_owner_id)
+    )
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    previous_status = asset.processing_status
+    asset.trashed_at = None
+    if previous_status in {"ready", "failed"}:
+        _reindex_asset_search(asset, db, previous_status)
+    else:
+        db.commit()
+
+    asset = db.scalar(
+        select(Asset)
+        .options(selectinload(Asset.tags), selectinload(Asset.folders))
+        .where(Asset.id == asset_id, Asset.owner_id == settings.demo_owner_id)
+    )
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return serialize_asset(asset)
+
+
+@router.delete("/{asset_id}/purge", status_code=204)
+def purge_asset(asset_id: UUID, db: Session = Depends(get_db)) -> None:
+    asset = db.scalar(
+        select(Asset).where(Asset.id == asset_id, Asset.owner_id == settings.demo_owner_id)
+    )
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    if asset.trashed_at is None:
+        raise HTTPException(status_code=409, detail="Move asset to trash before deleting forever")
+
     delete_asset_points(asset.id)
     remove_object(asset.storage_key)
     remove_object(asset.thumbnail_key)
@@ -449,7 +512,11 @@ def delete_asset(asset_id: UUID, db: Session = Depends(get_db)) -> None:
 @router.get("/{asset_id}/thumbnail")
 def get_thumbnail(asset_id: UUID, db: Session = Depends(get_db)) -> StreamingResponse:
     asset = db.scalar(
-        select(Asset).where(Asset.id == asset_id, Asset.owner_id == settings.demo_owner_id)
+        select(Asset).where(
+            Asset.id == asset_id,
+            Asset.owner_id == settings.demo_owner_id,
+            Asset.trashed_at.is_(None),
+        )
     )
     if not asset or not asset.thumbnail_key:
         raise HTTPException(status_code=404, detail="Thumbnail not found")
@@ -461,7 +528,11 @@ def get_thumbnail(asset_id: UUID, db: Session = Depends(get_db)) -> StreamingRes
 @router.get("/{asset_id}/raw")
 def get_raw_asset(asset_id: UUID, db: Session = Depends(get_db)) -> StreamingResponse:
     asset = db.scalar(
-        select(Asset).where(Asset.id == asset_id, Asset.owner_id == settings.demo_owner_id)
+        select(Asset).where(
+            Asset.id == asset_id,
+            Asset.owner_id == settings.demo_owner_id,
+            Asset.trashed_at.is_(None),
+        )
     )
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
@@ -476,7 +547,11 @@ def get_raw_asset(asset_id: UUID, db: Session = Depends(get_db)) -> StreamingRes
 @router.get("/{asset_id}/download")
 def download_asset(asset_id: UUID, db: Session = Depends(get_db)) -> StreamingResponse:
     asset = db.scalar(
-        select(Asset).where(Asset.id == asset_id, Asset.owner_id == settings.demo_owner_id)
+        select(Asset).where(
+            Asset.id == asset_id,
+            Asset.owner_id == settings.demo_owner_id,
+            Asset.trashed_at.is_(None),
+        )
     )
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
@@ -494,7 +569,11 @@ def create_share(
     asset_id: UUID, body: CreateShareIn, db: Session = Depends(get_db)
 ) -> CreateShareOut:
     asset = db.scalar(
-        select(Asset).where(Asset.id == asset_id, Asset.owner_id == settings.demo_owner_id)
+        select(Asset).where(
+            Asset.id == asset_id,
+            Asset.owner_id == settings.demo_owner_id,
+            Asset.trashed_at.is_(None),
+        )
     )
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")

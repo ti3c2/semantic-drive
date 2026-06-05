@@ -24,6 +24,8 @@ def _valid_share(token: str, db: Session) -> Share:
     now = datetime.now(timezone.utc)
     if not share or share.revoked_at is not None:
         raise HTTPException(status_code=404, detail="Share not found")
+    if share.asset.trashed_at is not None:
+        raise HTTPException(status_code=404, detail="Share not found")
     if share.expires_at and share.expires_at < now:
         raise HTTPException(status_code=404, detail="Share expired")
     return share

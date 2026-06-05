@@ -1,4 +1,4 @@
-import type { FormEvent } from 'react';
+import type { FormEvent, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './SemanticDriveApp.css';
 
@@ -17,6 +17,7 @@ type Asset = {
   height?: number | null;
   processing_status: string;
   visibility: string;
+  trashed_at?: string | null;
   thumbnail_url?: string | null;
   raw_url: string;
   download_url: string;
@@ -91,6 +92,96 @@ function isLiveStatus(status?: string | null) {
   return Boolean(status && status !== 'ready' && status !== 'failed');
 }
 
+function CopyIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect width="14" height="14" x="8" y="8" rx="2" />
+      <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+    </svg>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="M7 10l5 5 5-5" />
+      <path d="M12 15V3" />
+    </svg>
+  );
+}
+
+function ShareIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="18" cy="5" r="3" />
+      <circle cx="6" cy="12" r="3" />
+      <circle cx="18" cy="19" r="3" />
+      <path d="m8.6 13.5 6.8 4" />
+      <path d="m15.4 6.5-6.8 4" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 6h18" />
+      <path d="M8 6V4c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2v2" />
+      <path d="M19 6l-1 14c-.1 1.1-1 2-2.1 2H8.1c-1.1 0-2-.9-2.1-2L5 6" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+    </svg>
+  );
+}
+
+function IconOnlyAction({ children, label }: { children: ReactNode; label: string }) {
+  return (
+    <>
+      <span className="sd-action-icon" aria-hidden="true">
+        {children}
+      </span>
+      <span className="sd-sr-only">{label}</span>
+    </>
+  );
+}
+
 function assetToDisplay(asset: Asset): DisplayItem {
   return {
     id: asset.id,
@@ -126,16 +217,21 @@ function resultToDisplay(result: SearchResult): DisplayItem {
 
 export default function SemanticDriveApp() {
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [trashAssets, setTrashAssets] = useState<Asset[]>([]);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [query, setQuery] = useState('');
   const [uploading, setUploading] = useState(false);
   const [searching, setSearching] = useState(false);
   const [retryingIds, setRetryingIds] = useState<Set<string>>(() => new Set());
+  const [trashingIds, setTrashingIds] = useState<Set<string>>(() => new Set());
+  const [restoringIds, setRestoringIds] = useState<Set<string>>(() => new Set());
+  const [purgingIds, setPurgingIds] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<AssetDetail | null>(null);
   const [sharePayload, setSharePayload] = useState<Record<string, string> | null>(null);
   const [activeType, setActiveType] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<'library' | 'trash'>('library');
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [uploadDescription, setUploadDescription] = useState('');
@@ -146,6 +242,7 @@ export default function SemanticDriveApp() {
   const [deletingExtractions, setDeletingExtractions] = useState<Set<string>>(() => new Set());
   const [actionFeedback, setActionFeedback] = useState<ActionFeedback | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const detailDrawerRef = useRef<HTMLElement | null>(null);
   const selectedIdRef = useRef<string | null>(null);
   const actionFeedbackTimerRef = useRef<number | null>(null);
   const actionFeedbackIdRef = useRef(0);
@@ -196,9 +293,18 @@ export default function SemanticDriveApp() {
   }, []);
 
   const loadAssets = useCallback(async () => {
-    const response = await fetch(api('/api/assets'));
-    if (!response.ok) throw new Error('Failed to load assets');
-    setAssets(await response.json());
+    const [assetResponse, trashResponse] = await Promise.all([
+      fetch(api('/api/assets')),
+      fetch(api('/api/assets?trashed=true')),
+    ]);
+    if (!assetResponse.ok) throw new Error('Failed to load assets');
+    if (!trashResponse.ok) throw new Error('Failed to load trash');
+    const [activeItems, trashItems] = await Promise.all([
+      assetResponse.json() as Promise<Asset[]>,
+      trashResponse.json() as Promise<Asset[]>,
+    ]);
+    setAssets(activeItems);
+    setTrashAssets(trashItems);
   }, []);
 
   const fetchAssetDetail = useCallback(async (assetId: string) => {
@@ -223,6 +329,25 @@ export default function SemanticDriveApp() {
   useEffect(() => {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
+
+  const closeDetailDrawer = useCallback(() => {
+    setSelectedId(null);
+    setSharePayload(null);
+  }, []);
+
+  useEffect(() => {
+    if (!detail) return;
+
+    const closeOnOutsidePointerDown = (event: PointerEvent) => {
+      const drawer = detailDrawerRef.current;
+      const target = event.target;
+      if (!drawer || !(target instanceof Node) || drawer.contains(target)) return;
+      closeDetailDrawer();
+    };
+
+    document.addEventListener('pointerdown', closeOnOutsidePointerDown);
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointerDown);
+  }, [closeDetailDrawer, detail]);
 
   useEffect(() => {
     const source = new EventSource(api('/api/events'));
@@ -293,13 +418,17 @@ export default function SemanticDriveApp() {
     setDetailTagsDraft(detail.tags.map((tag) => tag.name).join(', '));
   }, [detail?.id]);
 
+  const isTrashView = viewMode === 'trash';
+
   const displayed = useMemo(() => {
-    const source: DisplayItem[] = query.trim()
-      ? results.map(resultToDisplay)
-      : assets.map(assetToDisplay);
+    const source: DisplayItem[] = isTrashView
+      ? trashAssets.map(assetToDisplay)
+      : query.trim()
+        ? results.map(resultToDisplay)
+        : assets.map(assetToDisplay);
     if (activeType === 'all') return source;
     return source.filter((item) => item.media_type === activeType);
-  }, [assets, results, query, activeType]);
+  }, [activeType, assets, isTrashView, query, results, trashAssets]);
 
   const detailTagNames = useMemo(() => parseTagNames(detailTagsDraft), [detailTagsDraft]);
   const detailHasChanges = useMemo(() => {
@@ -391,6 +520,11 @@ export default function SemanticDriveApp() {
   const runSearch = useCallback(
     async (event?: FormEvent, nextQuery = query, nextActiveType = activeType) => {
       event?.preventDefault();
+      if (viewMode === 'trash') {
+        setResults([]);
+        setSearching(false);
+        return;
+      }
       if (searchDebounceTimerRef.current !== null) {
         window.clearTimeout(searchDebounceTimerRef.current);
         searchDebounceTimerRef.current = null;
@@ -432,10 +566,15 @@ export default function SemanticDriveApp() {
         }
       }
     },
-    [activeType, loadAssets, query],
+    [activeType, loadAssets, query, viewMode],
   );
 
   useEffect(() => {
+    if (viewMode === 'trash') {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
     if (skipInitialSearchRef.current) {
       skipInitialSearchRef.current = false;
       return;
@@ -453,7 +592,7 @@ export default function SemanticDriveApp() {
         searchDebounceTimerRef.current = null;
       }
     };
-  }, [activeType, query, runSearch]);
+  }, [activeType, query, runSearch, viewMode]);
 
   async function createShare(assetId: string) {
     setSharePayload(null);
@@ -603,6 +742,84 @@ export default function SemanticDriveApp() {
     }
   }
 
+  async function moveAssetToTrash(assetId: string) {
+    if (trashingIds.has(assetId)) return;
+    setTrashingIds((current) => new Set(current).add(assetId));
+    setError(null);
+    try {
+      const response = await fetch(api(`/api/assets/${assetId}`), { method: 'DELETE' });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.detail || 'Could not move file to trash');
+      }
+      setResults((current) => current.filter((result) => result.asset_id !== assetId));
+      if (selectedIdRef.current === assetId) {
+        setSelectedId(null);
+        setDetail(null);
+        setSharePayload(null);
+      }
+      await loadAssets();
+      showActionFeedback('Moved to trash');
+    } catch (err) {
+      reportActionError(err, 'Could not move file to trash');
+    } finally {
+      setTrashingIds((current) => {
+        const next = new Set(current);
+        next.delete(assetId);
+        return next;
+      });
+    }
+  }
+
+  async function restoreAsset(assetId: string) {
+    if (restoringIds.has(assetId)) return;
+    setRestoringIds((current) => new Set(current).add(assetId));
+    setError(null);
+    try {
+      const response = await fetch(api(`/api/assets/${assetId}/restore`), { method: 'POST' });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.detail || 'Could not restore file');
+      }
+      const asset = (await response.json()) as Asset;
+      setTrashAssets((current) => current.filter((item) => item.id !== assetId));
+      setAssets((current) => [asset, ...current.filter((item) => item.id !== asset.id)]);
+      showActionFeedback('Restored');
+    } catch (err) {
+      reportActionError(err, 'Could not restore file');
+    } finally {
+      setRestoringIds((current) => {
+        const next = new Set(current);
+        next.delete(assetId);
+        return next;
+      });
+    }
+  }
+
+  async function purgeAsset(assetId: string) {
+    if (purgingIds.has(assetId)) return;
+    if (!window.confirm('Delete this file forever?')) return;
+    setPurgingIds((current) => new Set(current).add(assetId));
+    setError(null);
+    try {
+      const response = await fetch(api(`/api/assets/${assetId}/purge`), { method: 'DELETE' });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.detail || 'Could not delete file forever');
+      }
+      setTrashAssets((current) => current.filter((item) => item.id !== assetId));
+      showActionFeedback('Deleted forever');
+    } catch (err) {
+      reportActionError(err, 'Could not delete file forever');
+    } finally {
+      setPurgingIds((current) => {
+        const next = new Set(current);
+        next.delete(assetId);
+        return next;
+      });
+    }
+  }
+
   async function copyRawUrl(path: string) {
     await copyTextToClipboard(api(path));
     showActionFeedback('Link copied to clipboard');
@@ -622,33 +839,50 @@ export default function SemanticDriveApp() {
     }
   }
 
+  function selectLibraryType(type: string) {
+    setViewMode('library');
+    setActiveType(type);
+  }
+
+  function selectTrashView() {
+    setViewMode('trash');
+    setQuery('');
+    setResults([]);
+    setSelectedId(null);
+    setDetail(null);
+    setSharePayload(null);
+  }
+
   return (
     <main className="sd-app">
       <aside className="sd-sidebar">
         <div className="sd-logo">Semantic Drive</div>
         <button
-          className={activeType === 'all' ? 'active' : ''}
-          onClick={() => setActiveType('all')}
+          className={viewMode === 'library' && activeType === 'all' ? 'active' : ''}
+          onClick={() => selectLibraryType('all')}
         >
           All
         </button>
         <button
-          className={activeType === 'image' ? 'active' : ''}
-          onClick={() => setActiveType('image')}
+          className={viewMode === 'library' && activeType === 'image' ? 'active' : ''}
+          onClick={() => selectLibraryType('image')}
         >
           Images
         </button>
         <button
-          className={activeType === 'video' ? 'active' : ''}
-          onClick={() => setActiveType('video')}
+          className={viewMode === 'library' && activeType === 'video' ? 'active' : ''}
+          onClick={() => selectLibraryType('video')}
         >
           Videos
         </button>
         <button
-          className={activeType === 'audio' ? 'active' : ''}
-          onClick={() => setActiveType('audio')}
+          className={viewMode === 'library' && activeType === 'audio' ? 'active' : ''}
+          onClick={() => selectLibraryType('audio')}
         >
           Audio
+        </button>
+        <button className={viewMode === 'trash' ? 'active' : ''} onClick={selectTrashView}>
+          Trash
         </button>
         <div className="sd-sidebar-note">Paste, drop, search. No ceremonial onboarding parade.</div>
       </aside>
@@ -659,7 +893,8 @@ export default function SemanticDriveApp() {
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search text, speech, screenshots, tags..."
+              placeholder={isTrashView ? 'Trash' : 'Search text, speech, screenshots, tags...'}
+              disabled={isTrashView}
               autoFocus
             />
           </form>
@@ -680,31 +915,41 @@ export default function SemanticDriveApp() {
           />
         </header>
 
-        <div
-          className="sd-dropzone"
-          onDragOver={(event) => event.preventDefault()}
-          onDrop={(event) => {
-            event.preventDefault();
-            addPendingFiles(Array.from(event.dataTransfer.files || []));
-          }}
-        >
-          <strong>Drop files here</strong>
-          <span>
-            Images get OCR/captions, audio gets transcript, videos get audio transcription.
-          </span>
-        </div>
+        {!isTrashView && (
+          <div
+            className="sd-dropzone"
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => {
+              event.preventDefault();
+              addPendingFiles(Array.from(event.dataTransfer.files || []));
+            }}
+          >
+            <strong>Drop files here</strong>
+            <span>
+              Images get OCR/captions, audio gets transcript, videos get audio transcription.
+            </span>
+          </div>
+        )}
 
         {error && <div className="sd-error">{error}</div>}
 
         <div className="sd-result-count">
-          {query.trim()
-            ? `${displayed.length} semantic result${displayed.length === 1 ? '' : 's'}`
-            : `${displayed.length} file${displayed.length === 1 ? '' : 's'}`}
+          {isTrashView
+            ? `${displayed.length} trashed file${displayed.length === 1 ? '' : 's'}`
+            : query.trim()
+              ? `${displayed.length} semantic result${displayed.length === 1 ? '' : 's'}`
+              : `${displayed.length} file${displayed.length === 1 ? '' : 's'}`}
         </div>
 
         <section className="sd-grid">
           {displayed.map((item) => (
-            <article key={item.id} className="sd-card" onClick={() => setSelectedId(item.id)}>
+            <article
+              key={item.id}
+              className={`sd-card${isTrashView ? ' sd-card-muted' : ''}`}
+              onClick={() => {
+                if (!isTrashView) setSelectedId(item.id);
+              }}
+            >
               <div className="sd-thumb">
                 {item.thumbnail_url ? (
                   <img src={api(item.thumbnail_url)} alt={item.title} loading="lazy" />
@@ -733,24 +978,72 @@ export default function SemanticDriveApp() {
                 )}
               </div>
               <div className="sd-actions" onClick={(event) => event.stopPropagation()}>
-                <button
-                  onClick={() =>
-                    copyImageToClipboard(item).catch((err) => reportActionError(err, 'Copy failed'))
-                  }
-                >
-                  Copy
-                </button>
-                <a href={api(item.download_url)}>Download</a>
-                <button
-                  onClick={() =>
-                    createShare(item.id).catch((err) =>
-                      reportActionError(err, 'Could not create share link'),
-                    )
-                  }
-                >
-                  Share
-                </button>
-                {item.status === 'failed' && (
+                {isTrashView ? (
+                  <>
+                    <button
+                      className="sd-restore-action"
+                      onClick={() => restoreAsset(item.id)}
+                      disabled={restoringIds.has(item.id)}
+                    >
+                      {restoringIds.has(item.id) ? 'Restoring...' : 'Restore'}
+                    </button>
+                    <button
+                      className="sd-danger-action"
+                      onClick={() => purgeAsset(item.id)}
+                      disabled={purgingIds.has(item.id)}
+                    >
+                      {purgingIds.has(item.id) ? 'Deleting...' : 'Delete forever'}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      aria-label="Copy"
+                      title="Copy"
+                      onClick={() =>
+                        copyImageToClipboard(item).catch((err) =>
+                          reportActionError(err, 'Copy failed'),
+                        )
+                      }
+                    >
+                      <IconOnlyAction label="Copy">
+                        <CopyIcon />
+                      </IconOnlyAction>
+                    </button>
+                    <a href={api(item.download_url)} aria-label="Download" title="Download">
+                      <IconOnlyAction label="Download">
+                        <DownloadIcon />
+                      </IconOnlyAction>
+                    </a>
+                    <button
+                      aria-label="Share"
+                      title="Share"
+                      onClick={() =>
+                        createShare(item.id).catch((err) =>
+                          reportActionError(err, 'Could not create share link'),
+                        )
+                      }
+                    >
+                      <IconOnlyAction label="Share">
+                        <ShareIcon />
+                      </IconOnlyAction>
+                    </button>
+                    <button
+                      className="sd-danger-action"
+                      aria-label={trashingIds.has(item.id) ? 'Moving to trash' : 'Trash'}
+                      title={trashingIds.has(item.id) ? 'Moving to trash' : 'Trash'}
+                      onClick={() => moveAssetToTrash(item.id)}
+                      disabled={trashingIds.has(item.id)}
+                    >
+                      <IconOnlyAction
+                        label={trashingIds.has(item.id) ? 'Moving to trash' : 'Trash'}
+                      >
+                        <TrashIcon />
+                      </IconOnlyAction>
+                    </button>
+                  </>
+                )}
+                {!isTrashView && item.status === 'failed' && (
                   <button
                     onClick={() => retryProcessing(item.id)}
                     disabled={retryingIds.has(item.id)}
@@ -765,14 +1058,8 @@ export default function SemanticDriveApp() {
       </section>
 
       {detail && (
-        <aside className="sd-drawer">
-          <button
-            className="sd-close"
-            onClick={() => {
-              setSelectedId(null);
-              setSharePayload(null);
-            }}
-          >
+        <aside className="sd-drawer" ref={detailDrawerRef}>
+          <button className="sd-close" onClick={closeDetailDrawer}>
             ×
           </button>
           <h2>{detail.display_title || detail.original_filename}</h2>
@@ -822,21 +1109,46 @@ export default function SemanticDriveApp() {
           </form>
           <div className="sd-drawer-actions">
             <button
+              aria-label="Copy raw URL"
+              title="Copy raw URL"
               onClick={() =>
                 copyRawUrl(detail.raw_url).catch((err) => reportActionError(err, 'Copy failed'))
               }
             >
-              Copy raw URL
+              <IconOnlyAction label="Copy raw URL">
+                <CopyIcon />
+              </IconOnlyAction>
             </button>
-            <a href={api(detail.download_url)}>Download</a>
+            <a href={api(detail.download_url)} aria-label="Download" title="Download">
+              <IconOnlyAction label="Download">
+                <DownloadIcon />
+              </IconOnlyAction>
+            </a>
             <button
+              aria-label="Copy share link"
+              title="Copy share link"
               onClick={() =>
                 createShare(detail.id).catch((err) =>
                   reportActionError(err, 'Could not create share link'),
                 )
               }
             >
-              Copy share link
+              <IconOnlyAction label="Copy share link">
+                <ShareIcon />
+              </IconOnlyAction>
+            </button>
+            <button
+              className="sd-danger-action"
+              aria-label={trashingIds.has(detail.id) ? 'Moving to trash' : 'Move to trash'}
+              title={trashingIds.has(detail.id) ? 'Moving to trash' : 'Move to trash'}
+              onClick={() => moveAssetToTrash(detail.id)}
+              disabled={trashingIds.has(detail.id)}
+            >
+              <IconOnlyAction
+                label={trashingIds.has(detail.id) ? 'Moving to trash' : 'Move to trash'}
+              >
+                <TrashIcon />
+              </IconOnlyAction>
             </button>
             {detail.processing_status === 'failed' && (
               <button

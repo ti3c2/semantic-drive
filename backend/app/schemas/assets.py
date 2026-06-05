@@ -34,6 +34,7 @@ class AssetOut(BaseModel):
     height: int | None = None
     processing_status: str
     visibility: str
+    trashed_at: datetime | None = None
     thumbnail_url: str | None = None
     raw_url: str
     download_url: str

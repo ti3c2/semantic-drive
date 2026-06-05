@@ -95,7 +95,7 @@ def process_asset(asset_id: str) -> None:
                 selectinload(Asset.folders),
                 selectinload(Asset.extractions),
             )
-            .where(Asset.id == asset_uuid)
+            .where(Asset.id == asset_uuid, Asset.trashed_at.is_(None))
         )
         if not asset:
             return
@@ -176,7 +176,7 @@ def process_asset(asset_id: str) -> None:
                     selectinload(Asset.folders),
                     selectinload(Asset.extractions),
                 )
-                .where(Asset.id == asset_uuid)
+                .where(Asset.id == asset_uuid, Asset.trashed_at.is_(None))
             )
             if not asset:
                 return

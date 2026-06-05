@@ -46,6 +46,7 @@ def search_assets(body: SearchRequest, db: Session = Depends(get_db)) -> SearchR
         .join(Asset, AssetChunk.asset_id == Asset.id)
         .where(
             Asset.owner_id == settings.demo_owner_id,
+            Asset.trashed_at.is_(None),
             or_(
                 AssetChunk.text.ilike(like),
                 AssetChunk.text.ilike(tag_like),
@@ -74,6 +75,7 @@ def search_assets(body: SearchRequest, db: Session = Depends(get_db)) -> SearchR
         .options(selectinload(Asset.tags))
         .where(
             Asset.owner_id == settings.demo_owner_id,
+            Asset.trashed_at.is_(None),
             or_(
                 Asset.original_filename.ilike(like),
                 Asset.display_title.ilike(like),
@@ -134,7 +136,11 @@ def search_assets(body: SearchRequest, db: Session = Depends(get_db)) -> SearchR
     stmt = (
         select(Asset)
         .options(selectinload(Asset.tags), selectinload(Asset.folders))
-        .where(Asset.owner_id == settings.demo_owner_id, Asset.id.in_(list(best_by_asset)))
+        .where(
+            Asset.owner_id == settings.demo_owner_id,
+            Asset.id.in_(list(best_by_asset)),
+            Asset.trashed_at.is_(None),
+        )
     )
     if body.filters.media_types:
         stmt = stmt.where(Asset.media_type.in_(body.filters.media_types))

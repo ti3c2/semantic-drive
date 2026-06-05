@@ -77,6 +77,7 @@ class FakeDb:
 
     def scalars(self, _stmt) -> FakeScalarResult:
         self.calls += 1
+        assert "assets.trashed_at IS NULL" in str(_stmt)
         if self.calls == 1:
             return FakeScalarResult([])
         return FakeScalarResult([self.asset])

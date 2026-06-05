@@ -89,6 +89,7 @@ class Asset(Base, TimestampMixin):
         String(32), default="queued", index=True, nullable=False
     )
     visibility: Mapped[str] = mapped_column(String(32), default="private", nullable=False)
+    trashed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
     folders: Mapped[list[Folder]] = relationship(
         "Folder", secondary=asset_folders, back_populates="assets"

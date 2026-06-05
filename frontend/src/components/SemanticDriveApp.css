@@ -75,6 +75,10 @@
   background: transparent;
 }
 
+.sd-search input:disabled {
+  color: #8a8379;
+}
+
 .sd-upload-button,
 .sd-actions button,
 .sd-actions a,
@@ -93,6 +97,24 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.sd-action-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sd-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .sd-upload-button {
@@ -262,17 +284,28 @@
 
 .sd-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 0 14px 14px;
 }
 
 .sd-actions button,
 .sd-actions a {
-  flex: 1;
+  flex: 1 1 34px;
+  min-width: 34px;
   font-size: 12px;
   padding: 8px;
   background: #f1eee7;
   color: #181817;
+  min-height: 34px;
+  line-height: 1.15;
+}
+
+.sd-actions button svg,
+.sd-actions a svg,
+.sd-drawer-actions button svg,
+.sd-drawer-actions a svg {
+  display: block;
 }
 
 .sd-actions button:disabled,
@@ -280,6 +313,25 @@
 .sd-detail-edit-actions button:disabled {
   opacity: 0.58;
   cursor: not-allowed;
+}
+
+.sd-actions .sd-danger-action,
+.sd-drawer-actions .sd-danger-action {
+  background: #f8e7e3;
+  color: #862419;
+}
+
+.sd-actions .sd-restore-action {
+  background: #e6f3ec;
+  color: #195f3f;
+}
+
+.sd-card-muted {
+  cursor: default;
+}
+
+.sd-card-muted .sd-thumb {
+  filter: grayscale(0.28);
 }
 
 .sd-drawer {
@@ -356,14 +408,16 @@
 }
 
 .sd-drawer-actions {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin: 16px 0;
 }
 
 .sd-drawer-actions button,
 .sd-drawer-actions a {
+  flex: 1 1 40px;
+  min-width: 40px;
   font-size: 12px;
   padding: 10px 8px;
 }
