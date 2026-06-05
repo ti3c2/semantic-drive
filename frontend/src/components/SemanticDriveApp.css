@@ -88,13 +88,6 @@
   background: #f1eee7;
 }
 
-.sd-sidebar-note {
-  margin-top: auto;
-  color: #aaa7a0;
-  font-size: 13px;
-  line-height: 1.45;
-}
-
 .sd-main {
   padding: 28px;
 }
@@ -889,10 +882,6 @@
 
   .sd-sidebar-heading {
     margin-bottom: 0;
-  }
-
-  .sd-sidebar-note {
-    display: none;
   }
 
   .sd-header {

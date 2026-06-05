@@ -1,0 +1,180 @@
+import type { FormEvent, RefObject } from 'react';
+import type { AssetDetail, SharePayload } from './types';
+import { api } from './api';
+import { Extraction } from './Extraction';
+import { CopyIcon, DownloadIcon, ShareIcon, TrashIcon } from './icons';
+import { IconOnlyAction } from './media';
+import { InlineSpinner } from './StatusIndicator';
+import { formatBytes } from './utils';
+
+type DetailDrawerProps = {
+  detail: AssetDetail;
+  drawerRef: RefObject<HTMLElement | null>;
+  sharePayload: SharePayload | null;
+  descriptionDraft: string;
+  tagsDraft: string;
+  detailHasChanges: boolean;
+  savingDetail: boolean;
+  deletingExtractions: ReadonlySet<string>;
+  trashingIds: ReadonlySet<string>;
+  retryingIds: ReadonlySet<string>;
+  onClose: () => void;
+  onSaveMetadata: (event: FormEvent) => void;
+  onDescriptionChange: (value: string) => void;
+  onTagsChange: (value: string) => void;
+  onCopyRawUrl: (path: string) => void;
+  onCreateShare: (assetId: string) => void;
+  onMoveToTrash: (assetId: string) => void;
+  onRetryProcessing: (assetId: string) => void;
+  onDeleteExtraction: (extractionType: string) => void;
+};
+
+export function DetailDrawer({
+  detail,
+  drawerRef,
+  sharePayload,
+  descriptionDraft,
+  tagsDraft,
+  detailHasChanges,
+  savingDetail,
+  deletingExtractions,
+  trashingIds,
+  retryingIds,
+  onClose,
+  onSaveMetadata,
+  onDescriptionChange,
+  onTagsChange,
+  onCopyRawUrl,
+  onCreateShare,
+  onMoveToTrash,
+  onRetryProcessing,
+  onDeleteExtraction,
+}: DetailDrawerProps) {
+  return (
+    <aside className="sd-drawer" ref={drawerRef}>
+      <button type="button" className="sd-close" onClick={onClose}>
+        &times;
+      </button>
+      <h2>{detail.display_title || detail.original_filename}</h2>
+      <div className="sd-detail-meta">
+        {detail.mime_type} &middot; {formatBytes(detail.file_size_bytes)} &middot;{' '}
+        {detail.processing_status}
+      </div>
+      <div className="sd-preview">
+        {detail.media_type === 'image' && (
+          <img src={api(detail.raw_url)} alt={detail.display_title || detail.original_filename} />
+        )}
+        {detail.media_type === 'video' && (
+          <video
+            src={api(detail.raw_url)}
+            poster={detail.thumbnail_url ? api(detail.thumbnail_url) : undefined}
+            controls
+          />
+        )}
+        {detail.media_type === 'audio' && <audio src={api(detail.raw_url)} controls />}
+      </div>
+      <form className="sd-detail-edit" onSubmit={onSaveMetadata}>
+        <label className="sd-field">
+          <span>Description</span>
+          <textarea
+            value={descriptionDraft}
+            onChange={(event) => onDescriptionChange(event.target.value)}
+            rows={5}
+            placeholder="Add context, source, notes..."
+          />
+        </label>
+        <label className="sd-field">
+          <span>Tags</span>
+          <input
+            value={tagsDraft}
+            onChange={(event) => onTagsChange(event.target.value)}
+            placeholder="research, invoice, client-a"
+          />
+        </label>
+        <div className="sd-detail-edit-actions">
+          <button type="submit" disabled={!detailHasChanges || savingDetail}>
+            {savingDetail && <InlineSpinner />}
+            {savingDetail ? 'Updating search...' : 'Save metadata'}
+          </button>
+        </div>
+      </form>
+      <div className="sd-drawer-actions">
+        <button
+          type="button"
+          aria-label="Copy raw URL"
+          title="Copy raw URL"
+          onClick={() => onCopyRawUrl(detail.raw_url)}
+        >
+          <IconOnlyAction label="Copy raw URL">
+            <CopyIcon />
+          </IconOnlyAction>
+        </button>
+        <a href={api(detail.download_url)} aria-label="Download" title="Download">
+          <IconOnlyAction label="Download">
+            <DownloadIcon />
+          </IconOnlyAction>
+        </a>
+        <button
+          type="button"
+          aria-label="Copy share link"
+          title="Copy share link"
+          onClick={() => onCreateShare(detail.id)}
+        >
+          <IconOnlyAction label="Copy share link">
+            <ShareIcon />
+          </IconOnlyAction>
+        </button>
+        <button
+          type="button"
+          className="sd-danger-action"
+          aria-label={trashingIds.has(detail.id) ? 'Moving to trash' : 'Move to trash'}
+          title={trashingIds.has(detail.id) ? 'Moving to trash' : 'Move to trash'}
+          onClick={() => onMoveToTrash(detail.id)}
+          disabled={trashingIds.has(detail.id)}
+        >
+          <IconOnlyAction label={trashingIds.has(detail.id) ? 'Moving to trash' : 'Move to trash'}>
+            <TrashIcon />
+          </IconOnlyAction>
+        </button>
+        {detail.processing_status === 'failed' && (
+          <button
+            type="button"
+            onClick={() => onRetryProcessing(detail.id)}
+            disabled={retryingIds.has(detail.id)}
+          >
+            {retryingIds.has(detail.id) ? 'Retrying...' : 'Retry processing'}
+          </button>
+        )}
+      </div>
+      {sharePayload && (
+        <div className="sd-share-box">
+          <strong>Share copied</strong>
+          <input
+            readOnly
+            value={String(sharePayload.share_url || '')}
+            onFocus={(event) => event.currentTarget.select()}
+          />
+          <textarea readOnly value={String(sharePayload.embed?.iframe || '')} />
+        </div>
+      )}
+      <Extraction
+        title="Visual summary"
+        text={detail.visual_summary}
+        deleting={deletingExtractions.has('visual_summary')}
+        onDelete={() => onDeleteExtraction('visual_summary')}
+      />
+      <Extraction
+        title="OCR"
+        text={detail.ocr_text}
+        deleting={deletingExtractions.has('ocr')}
+        onDelete={() => onDeleteExtraction('ocr')}
+      />
+      <Extraction
+        title="Transcript"
+        text={detail.transcript}
+        deleting={deletingExtractions.has('transcript')}
+        onDelete={() => onDeleteExtraction('transcript')}
+      />
+    </aside>
+  );
+}

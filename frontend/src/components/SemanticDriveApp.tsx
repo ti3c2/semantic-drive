@@ -1,327 +1,37 @@
-import type { FormEvent, ReactNode } from 'react';
+import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './SemanticDriveApp.css';
+import { ActionToast } from './semantic-drive/ActionToast';
+import { api } from './semantic-drive/api';
+import { AssetGrid } from './semantic-drive/AssetGrid';
+import { copyImageUrlToClipboard, copyTextToClipboard } from './semantic-drive/clipboard';
+import { DetailDrawer } from './semantic-drive/DetailDrawer';
+import { FileDropzone } from './semantic-drive/FileDropzone';
+import { Sidebar } from './semantic-drive/Sidebar';
+import type {
+  ActionFeedback,
+  Asset,
+  AssetDetail,
+  DisplayItem,
+  SearchResult,
+  SharePayload,
+  ViewMode,
+} from './semantic-drive/types';
+import { UploadModal } from './semantic-drive/UploadModal';
+import {
+  assetToDisplay,
+  fileKey,
+  isLiveStatus,
+  parseTagNames,
+  resultToDisplay,
+} from './semantic-drive/utils';
 
-const API_BASE = (import.meta.env.PUBLIC_API_BASE_URL ?? '').replace(/\/$/, '');
-
-type Asset = {
-  id: string;
-  original_filename: string;
-  display_title?: string | null;
-  description?: string | null;
-  media_type: 'image' | 'audio' | 'video' | string;
-  mime_type: string;
-  file_size_bytes: number;
-  duration_ms?: number | null;
-  width?: number | null;
-  height?: number | null;
-  processing_status: string;
-  visibility: string;
-  trashed_at?: string | null;
-  thumbnail_url?: string | null;
-  raw_url: string;
-  download_url: string;
-  tags: { id: string; name: string }[];
-  created_at: string;
-};
-
-type AssetDetail = Asset & {
-  ocr_text?: string | null;
-  visual_summary?: string | null;
-  transcript?: string | null;
-  extractions: { id: string; type: string; text: string; extra: Record<string, unknown> }[];
-};
-
-type SearchResult = {
-  asset_id: string;
-  title: string;
-  original_filename: string;
-  media_type: string;
-  mime_type: string;
-  thumbnail_url?: string | null;
-  raw_url: string;
-  download_url: string;
-  score: number;
-  vector_score?: number | null;
-  rerank_score?: number | null;
-  match_reason: { type: string; text: string; start_ms?: number | null; end_ms?: number | null };
-  tags: string[];
-  created_at: string;
-};
-
-type DisplayItem = {
-  id: string;
-  title: string;
-  original_filename: string;
-  media_type: string;
-  mime_type: string;
-  thumbnail_url?: string | null;
-  raw_url: string;
-  download_url: string;
+type AssetProcessingUpdatePayload = {
+  type?: string;
+  asset_id?: string;
   status?: string;
-  score?: number;
-  match?: SearchResult['match_reason'];
-  tags: string[];
-  created_at: string;
+  step?: string;
 };
-
-type ActionFeedback = {
-  id: number;
-  message: string;
-  tone: 'success' | 'error';
-};
-
-function api(path: string) {
-  if (path.startsWith('http')) return path;
-  return `${API_BASE}${path}`;
-}
-
-function formatBytes(bytes: number) {
-  if (!bytes) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${value.toFixed(value >= 10 || unit === 0 ? 0 : 1)} ${units[unit]}`;
-}
-
-function isLiveStatus(status?: string | null) {
-  return Boolean(status && status !== 'ready' && status !== 'failed');
-}
-
-function CopyIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="16"
-      height="16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect width="14" height="14" x="8" y="8" rx="2" />
-      <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
-    </svg>
-  );
-}
-
-function DownloadIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="16"
-      height="16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <path d="M7 10l5 5 5-5" />
-      <path d="M12 15V3" />
-    </svg>
-  );
-}
-
-function ShareIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="16"
-      height="16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="18" cy="5" r="3" />
-      <circle cx="6" cy="12" r="3" />
-      <circle cx="18" cy="19" r="3" />
-      <path d="m8.6 13.5 6.8 4" />
-      <path d="m15.4 6.5-6.8 4" />
-    </svg>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="16"
-      height="16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M3 6h18" />
-      <path d="M8 6V4c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2v2" />
-      <path d="M19 6l-1 14c-.1 1.1-1 2-2.1 2H8.1c-1.1 0-2-.9-2.1-2L5 6" />
-      <path d="M10 11v6" />
-      <path d="M14 11v6" />
-    </svg>
-  );
-}
-
-function ImageIcon({ size = 18 }: { size?: number }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect width="18" height="18" x="3" y="3" rx="2" />
-      <circle cx="9" cy="9" r="2" />
-      <path d="m21 15-3.5-3.5a2 2 0 0 0-2.8 0L8 18" />
-    </svg>
-  );
-}
-
-function VideoIcon({ size = 18 }: { size?: number }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="m16 13 5.2 3.4c.7.5 1.8 0 1.8-.9v-7c0-.9-1-1.4-1.8-.9L16 11" />
-      <rect width="14" height="12" x="2" y="6" rx="2" />
-    </svg>
-  );
-}
-
-function AudioIcon({ size = 18 }: { size?: number }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M9 18V5l12-2v13" />
-      <circle cx="6" cy="18" r="3" />
-      <circle cx="18" cy="16" r="3" />
-    </svg>
-  );
-}
-
-function SidebarIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="18"
-      height="18"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect width="18" height="18" x="3" y="3" rx="2" />
-      <path d="M9 3v18" />
-      <path d="m14 9 3 3-3 3" />
-    </svg>
-  );
-}
-
-function CloseIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="18"
-      height="18"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect width="18" height="18" x="3" y="3" rx="2" />
-      <path d="M9 3v18" />
-      <path d="m16 9-3 3 3 3" />
-    </svg>
-  );
-}
-
-function mediaTypeLabel(mediaType: string) {
-  if (mediaType === 'image') return 'Image';
-  if (mediaType === 'video') return 'Video';
-  if (mediaType === 'audio') return 'Audio';
-  return mediaType || 'File';
-}
-
-function MediaTypeIcon({ mediaType, size = 18 }: { mediaType: string; size?: number }) {
-  if (mediaType === 'image') return <ImageIcon size={size} />;
-  if (mediaType === 'video') return <VideoIcon size={size} />;
-  if (mediaType === 'audio') return <AudioIcon size={size} />;
-  return <span className="sd-media-fallback">{mediaTypeLabel(mediaType)}</span>;
-}
-
-function IconOnlyAction({ children, label }: { children: ReactNode; label: string }) {
-  return (
-    <>
-      <span className="sd-action-icon" aria-hidden="true">
-        {children}
-      </span>
-      <span className="sd-sr-only">{label}</span>
-    </>
-  );
-}
-
-function assetToDisplay(asset: Asset): DisplayItem {
-  return {
-    id: asset.id,
-    title: asset.display_title || asset.original_filename,
-    original_filename: asset.original_filename,
-    media_type: asset.media_type,
-    mime_type: asset.mime_type,
-    thumbnail_url: asset.thumbnail_url,
-    raw_url: asset.raw_url,
-    download_url: asset.download_url,
-    status: asset.processing_status,
-    tags: asset.tags.map((tag) => tag.name),
-    created_at: asset.created_at,
-  };
-}
-
-function resultToDisplay(result: SearchResult): DisplayItem {
-  return {
-    id: result.asset_id,
-    title: result.title,
-    original_filename: result.original_filename,
-    media_type: result.media_type,
-    mime_type: result.mime_type,
-    thumbnail_url: result.thumbnail_url,
-    raw_url: result.raw_url,
-    download_url: result.download_url,
-    score: result.score,
-    match: result.match_reason,
-    tags: result.tags,
-    created_at: result.created_at,
-  };
-}
 
 export default function SemanticDriveApp() {
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -337,9 +47,9 @@ export default function SemanticDriveApp() {
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<AssetDetail | null>(null);
-  const [sharePayload, setSharePayload] = useState<Record<string, string> | null>(null);
+  const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
   const [activeType, setActiveType] = useState<string>('all');
-  const [viewMode, setViewMode] = useState<'library' | 'trash'>('library');
+  const [viewMode, setViewMode] = useState<ViewMode>('library');
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [uploadDescription, setUploadDescription] = useState('');
@@ -461,26 +171,24 @@ export default function SemanticDriveApp() {
   useEffect(() => {
     const source = new EventSource(api('/api/events'));
     source.onmessage = (event) => {
-      const payload = JSON.parse(event.data);
-      if (payload.type !== 'asset_processing_update') return;
+      const payload = JSON.parse(event.data) as AssetProcessingUpdatePayload;
+      if (payload.type !== 'asset_processing_update' || !payload.asset_id || !payload.status) {
+        return;
+      }
+      const assetId = payload.asset_id;
+      const status = payload.status;
       setAssets((current) =>
         current.map((asset) =>
-          asset.id === payload.asset_id ? { ...asset, processing_status: payload.status } : asset,
+          asset.id === assetId ? { ...asset, processing_status: status } : asset,
         ),
       );
       setDetail((current) =>
-        current?.id === payload.asset_id
-          ? { ...current, processing_status: payload.status }
-          : current,
+        current && current.id === assetId ? { ...current, processing_status: status } : current,
       );
-      if (
-        payload.status === 'ready' ||
-        payload.status === 'failed' ||
-        payload.step === 'thumbnail ready'
-      ) {
+      if (status === 'ready' || status === 'failed' || payload.step === 'thumbnail ready') {
         loadAssets().catch(() => undefined);
-        if (selectedIdRef.current === payload.asset_id) {
-          fetchAssetDetail(payload.asset_id)
+        if (selectedIdRef.current === assetId) {
+          fetchAssetDetail(assetId)
             .then((nextDetail) => {
               if (selectedIdRef.current === nextDetail.id) setDetail(nextDetail);
             })
@@ -570,6 +278,10 @@ export default function SemanticDriveApp() {
     }, 4000);
     return () => window.clearInterval(timer);
   }, [fetchAssetDetail, hasLiveWork, loadAssets]);
+
+  function openFilePicker() {
+    fileInputRef.current?.click();
+  }
 
   function removePendingFile(index: number) {
     setPendingFiles((current) => current.filter((_, itemIndex) => itemIndex !== index));
@@ -661,7 +373,7 @@ export default function SemanticDriveApp() {
           }),
         });
         if (!response.ok) throw new Error('Search failed');
-        const payload = await response.json();
+        const payload = (await response.json()) as { results?: SearchResult[] };
         if (searchRequestIdRef.current === requestId) {
           setResults(payload.results || []);
         }
@@ -711,9 +423,11 @@ export default function SemanticDriveApp() {
       body: JSON.stringify({ allow_download: true }),
     });
     if (!response.ok) throw new Error('Could not create share link');
-    const payload = await response.json();
+    const payload = (await response.json()) as SharePayload;
+    const shareUrl = typeof payload.share_url === 'string' ? payload.share_url : '';
+    if (!shareUrl) throw new Error('Share response did not include a link');
     setSharePayload(payload);
-    await copyTextToClipboard(payload.share_url);
+    await copyTextToClipboard(shareUrl);
     showActionFeedback('Share link copied to clipboard');
   }
 
@@ -948,6 +662,18 @@ export default function SemanticDriveApp() {
     }
   }
 
+  function copyItemToClipboard(item: DisplayItem) {
+    copyImageToClipboard(item).catch((err) => reportActionError(err, 'Copy failed'));
+  }
+
+  function copyRawUrlSafely(path: string) {
+    copyRawUrl(path).catch((err) => reportActionError(err, 'Copy failed'));
+  }
+
+  function createShareSafely(assetId: string) {
+    createShare(assetId).catch((err) => reportActionError(err, 'Could not create share link'));
+  }
+
   function selectLibraryType(type: string) {
     setViewMode('library');
     setActiveType(type);
@@ -964,65 +690,15 @@ export default function SemanticDriveApp() {
 
   return (
     <main className={`sd-app${isSidebarOpen ? '' : ' sd-app-sidebar-collapsed'}`}>
-      {!isSidebarOpen && (
-        <button
-          className="sd-sidebar-open-button"
-          type="button"
-          aria-controls="sd-sidebar"
-          aria-expanded={isSidebarOpen}
-          title="Show sidebar"
-          onClick={() => setIsSidebarOpen(true)}
-        >
-          <IconOnlyAction label="Show sidebar">
-            <SidebarIcon />
-          </IconOnlyAction>
-        </button>
-      )}
-      <aside className="sd-sidebar" id="sd-sidebar">
-        <div className="sd-sidebar-heading">
-          <button
-            className="sd-sidebar-close"
-            type="button"
-            aria-controls="sd-sidebar"
-            aria-expanded={isSidebarOpen}
-            title="Hide sidebar"
-            onClick={() => setIsSidebarOpen(false)}
-          >
-            <IconOnlyAction label="Hide sidebar">
-              <CloseIcon />
-            </IconOnlyAction>
-          </button>
-          <div className="sd-logo">Semantic Drive</div>
-        </div>
-        <button
-          className={viewMode === 'library' && activeType === 'all' ? 'active' : ''}
-          onClick={() => selectLibraryType('all')}
-        >
-          All
-        </button>
-        <button
-          className={viewMode === 'library' && activeType === 'image' ? 'active' : ''}
-          onClick={() => selectLibraryType('image')}
-        >
-          Images
-        </button>
-        <button
-          className={viewMode === 'library' && activeType === 'video' ? 'active' : ''}
-          onClick={() => selectLibraryType('video')}
-        >
-          Videos
-        </button>
-        <button
-          className={viewMode === 'library' && activeType === 'audio' ? 'active' : ''}
-          onClick={() => selectLibraryType('audio')}
-        >
-          Audio
-        </button>
-        <button className={viewMode === 'trash' ? 'active' : ''} onClick={selectTrashView}>
-          Trash
-        </button>
-        <div className="sd-sidebar-note">Paste, drop, search. No ceremonial onboarding parade.</div>
-      </aside>
+      <Sidebar
+        isSidebarOpen={isSidebarOpen}
+        activeType={activeType}
+        viewMode={viewMode}
+        onOpenSidebar={() => setIsSidebarOpen(true)}
+        onCloseSidebar={() => setIsSidebarOpen(false)}
+        onSelectLibraryType={selectLibraryType}
+        onSelectTrashView={selectTrashView}
+      />
 
       <section className="sd-main">
         <header className="sd-header">
@@ -1046,32 +722,14 @@ export default function SemanticDriveApp() {
         </header>
 
         {!isTrashView && (
-          <div
+          <FileDropzone
             className="sd-dropzone"
-            role="button"
-            tabIndex={uploading ? -1 : 0}
-            aria-disabled={uploading}
-            onClick={() => {
-              if (!uploading) fileInputRef.current?.click();
-            }}
-            onKeyDown={(event) => {
-              if (uploading) return;
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                fileInputRef.current?.click();
-              }
-            }}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={(event) => {
-              event.preventDefault();
-              addPendingFiles(Array.from(event.dataTransfer.files || []));
-            }}
-          >
-            <strong>Drop files here</strong>
-            <span>
-              Images get OCR/captions, audio gets transcript, videos get audio transcription.
-            </span>
-          </div>
+            uploading={uploading}
+            onOpenFilePicker={openFilePicker}
+            onAddFiles={addPendingFiles}
+            title="Drop files here"
+            subtitle="Images get OCR/captions, audio gets transcript, videos get audio transcription."
+          />
         )}
 
         {error && <div className="sd-error">{error}</div>}
@@ -1082,573 +740,67 @@ export default function SemanticDriveApp() {
             : query.trim()
               ? `${displayed.length} semantic result${displayed.length === 1 ? '' : 's'}`
               : `${displayed.length} file${displayed.length === 1 ? '' : 's'}`}
+          {searching && <span> searching...</span>}
         </div>
 
-        <section className="sd-grid">
-          {displayed.map((item) => (
-            <article
-              key={item.id}
-              className={`sd-card${isTrashView ? ' sd-card-muted' : ''}`}
-              onClick={() => {
-                if (!isTrashView) setSelectedId(item.id);
-              }}
-            >
-              <div className="sd-thumb">
-                {item.thumbnail_url ? (
-                  <img src={api(item.thumbnail_url)} alt={item.title} loading="lazy" />
-                ) : (
-                  <div className="sd-placeholder" title={mediaTypeLabel(item.media_type)}>
-                    <MediaTypeIcon mediaType={item.media_type} size={42} />
-                    <span className="sd-sr-only">{mediaTypeLabel(item.media_type)}</span>
-                  </div>
-                )}
-                <StatusIndicator status={item.status} />
-              </div>
-              <div className="sd-card-body">
-                <div className="sd-card-title">
-                  <span className="sd-card-title-text">{item.title}</span>
-                  <span
-                    className="sd-card-title-media-icon"
-                    title={mediaTypeLabel(item.media_type)}
-                  >
-                    <MediaTypeIcon mediaType={item.media_type} />
-                    <span className="sd-sr-only">{mediaTypeLabel(item.media_type)}</span>
-                  </span>
-                </div>
-                {typeof item.score === 'number' && (
-                  <div className="sd-card-meta">
-                    <span>{Math.round(item.score * 100)}%</span>
-                  </div>
-                )}
-                {item.match && (
-                  <p className="sd-match">
-                    {item.match.type}: {item.match.text}
-                  </p>
-                )}
-                {!!item.tags.length && (
-                  <div className="sd-tags">
-                    {item.tags.slice(0, 4).map((tag) => (
-                      <span key={tag}>#{tag}</span>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div className="sd-actions" onClick={(event) => event.stopPropagation()}>
-                {isTrashView ? (
-                  <>
-                    <button
-                      className="sd-restore-action"
-                      onClick={() => restoreAsset(item.id)}
-                      disabled={restoringIds.has(item.id)}
-                    >
-                      {restoringIds.has(item.id) ? 'Restoring...' : 'Restore'}
-                    </button>
-                    <button
-                      className="sd-danger-action"
-                      onClick={() => purgeAsset(item.id)}
-                      disabled={purgingIds.has(item.id)}
-                    >
-                      {purgingIds.has(item.id) ? 'Deleting...' : 'Delete forever'}
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      aria-label="Copy"
-                      title="Copy"
-                      onClick={() =>
-                        copyImageToClipboard(item).catch((err) =>
-                          reportActionError(err, 'Copy failed'),
-                        )
-                      }
-                    >
-                      <IconOnlyAction label="Copy">
-                        <CopyIcon />
-                      </IconOnlyAction>
-                    </button>
-                    <a href={api(item.download_url)} aria-label="Download" title="Download">
-                      <IconOnlyAction label="Download">
-                        <DownloadIcon />
-                      </IconOnlyAction>
-                    </a>
-                    <button
-                      aria-label="Share"
-                      title="Share"
-                      onClick={() =>
-                        createShare(item.id).catch((err) =>
-                          reportActionError(err, 'Could not create share link'),
-                        )
-                      }
-                    >
-                      <IconOnlyAction label="Share">
-                        <ShareIcon />
-                      </IconOnlyAction>
-                    </button>
-                    <button
-                      className="sd-danger-action"
-                      aria-label={trashingIds.has(item.id) ? 'Moving to trash' : 'Trash'}
-                      title={trashingIds.has(item.id) ? 'Moving to trash' : 'Trash'}
-                      onClick={() => moveAssetToTrash(item.id)}
-                      disabled={trashingIds.has(item.id)}
-                    >
-                      <IconOnlyAction
-                        label={trashingIds.has(item.id) ? 'Moving to trash' : 'Trash'}
-                      >
-                        <TrashIcon />
-                      </IconOnlyAction>
-                    </button>
-                  </>
-                )}
-                {!isTrashView && item.status === 'failed' && (
-                  <button
-                    onClick={() => retryProcessing(item.id)}
-                    disabled={retryingIds.has(item.id)}
-                  >
-                    {retryingIds.has(item.id) ? 'Retrying...' : 'Retry'}
-                  </button>
-                )}
-              </div>
-            </article>
-          ))}
-        </section>
+        <AssetGrid
+          items={displayed}
+          isTrashView={isTrashView}
+          restoringIds={restoringIds}
+          purgingIds={purgingIds}
+          trashingIds={trashingIds}
+          retryingIds={retryingIds}
+          onSelectAsset={setSelectedId}
+          onCopyItem={copyItemToClipboard}
+          onCreateShare={createShareSafely}
+          onMoveToTrash={moveAssetToTrash}
+          onRestoreAsset={restoreAsset}
+          onPurgeAsset={purgeAsset}
+          onRetryProcessing={retryProcessing}
+        />
       </section>
 
       {detail && (
-        <aside className="sd-drawer" ref={detailDrawerRef}>
-          <button className="sd-close" onClick={closeDetailDrawer}>
-            ×
-          </button>
-          <h2>{detail.display_title || detail.original_filename}</h2>
-          <div className="sd-detail-meta">
-            {detail.mime_type} · {formatBytes(detail.file_size_bytes)} · {detail.processing_status}
-          </div>
-          <div className="sd-preview">
-            {detail.media_type === 'image' && (
-              <img
-                src={api(detail.raw_url)}
-                alt={detail.display_title || detail.original_filename}
-              />
-            )}
-            {detail.media_type === 'video' && (
-              <video
-                src={api(detail.raw_url)}
-                poster={detail.thumbnail_url ? api(detail.thumbnail_url) : undefined}
-                controls
-              />
-            )}
-            {detail.media_type === 'audio' && <audio src={api(detail.raw_url)} controls />}
-          </div>
-          <form className="sd-detail-edit" onSubmit={saveDetailMetadata}>
-            <label className="sd-field">
-              <span>Description</span>
-              <textarea
-                value={detailDescriptionDraft}
-                onChange={(event) => setDetailDescriptionDraft(event.target.value)}
-                rows={5}
-                placeholder="Add context, source, notes..."
-              />
-            </label>
-            <label className="sd-field">
-              <span>Tags</span>
-              <input
-                value={detailTagsDraft}
-                onChange={(event) => setDetailTagsDraft(event.target.value)}
-                placeholder="research, invoice, client-a"
-              />
-            </label>
-            <div className="sd-detail-edit-actions">
-              <button type="submit" disabled={!detailHasChanges || savingDetail}>
-                {savingDetail && <InlineSpinner />}
-                {savingDetail ? 'Updating search...' : 'Save metadata'}
-              </button>
-            </div>
-          </form>
-          <div className="sd-drawer-actions">
-            <button
-              aria-label="Copy raw URL"
-              title="Copy raw URL"
-              onClick={() =>
-                copyRawUrl(detail.raw_url).catch((err) => reportActionError(err, 'Copy failed'))
-              }
-            >
-              <IconOnlyAction label="Copy raw URL">
-                <CopyIcon />
-              </IconOnlyAction>
-            </button>
-            <a href={api(detail.download_url)} aria-label="Download" title="Download">
-              <IconOnlyAction label="Download">
-                <DownloadIcon />
-              </IconOnlyAction>
-            </a>
-            <button
-              aria-label="Copy share link"
-              title="Copy share link"
-              onClick={() =>
-                createShare(detail.id).catch((err) =>
-                  reportActionError(err, 'Could not create share link'),
-                )
-              }
-            >
-              <IconOnlyAction label="Copy share link">
-                <ShareIcon />
-              </IconOnlyAction>
-            </button>
-            <button
-              className="sd-danger-action"
-              aria-label={trashingIds.has(detail.id) ? 'Moving to trash' : 'Move to trash'}
-              title={trashingIds.has(detail.id) ? 'Moving to trash' : 'Move to trash'}
-              onClick={() => moveAssetToTrash(detail.id)}
-              disabled={trashingIds.has(detail.id)}
-            >
-              <IconOnlyAction
-                label={trashingIds.has(detail.id) ? 'Moving to trash' : 'Move to trash'}
-              >
-                <TrashIcon />
-              </IconOnlyAction>
-            </button>
-            {detail.processing_status === 'failed' && (
-              <button
-                onClick={() => retryProcessing(detail.id)}
-                disabled={retryingIds.has(detail.id)}
-              >
-                {retryingIds.has(detail.id) ? 'Retrying...' : 'Retry processing'}
-              </button>
-            )}
-          </div>
-          {sharePayload && (
-            <div className="sd-share-box">
-              <strong>Share copied</strong>
-              <input
-                readOnly
-                value={String(sharePayload.share_url || '')}
-                onFocus={(event) => event.currentTarget.select()}
-              />
-              <textarea
-                readOnly
-                value={String(
-                  (sharePayload.embed as unknown as Record<string, string>)?.iframe || '',
-                )}
-              />
-            </div>
-          )}
-          <Extraction
-            title="Visual summary"
-            text={detail.visual_summary}
-            deleting={deletingExtractions.has('visual_summary')}
-            onDelete={() => deleteExtraction('visual_summary')}
-          />
-          <Extraction
-            title="OCR"
-            text={detail.ocr_text}
-            deleting={deletingExtractions.has('ocr')}
-            onDelete={() => deleteExtraction('ocr')}
-          />
-          <Extraction
-            title="Transcript"
-            text={detail.transcript}
-            deleting={deletingExtractions.has('transcript')}
-            onDelete={() => deleteExtraction('transcript')}
-          />
-        </aside>
+        <DetailDrawer
+          detail={detail}
+          drawerRef={detailDrawerRef}
+          sharePayload={sharePayload}
+          descriptionDraft={detailDescriptionDraft}
+          tagsDraft={detailTagsDraft}
+          detailHasChanges={detailHasChanges}
+          savingDetail={savingDetail}
+          deletingExtractions={deletingExtractions}
+          trashingIds={trashingIds}
+          retryingIds={retryingIds}
+          onClose={closeDetailDrawer}
+          onSaveMetadata={saveDetailMetadata}
+          onDescriptionChange={setDetailDescriptionDraft}
+          onTagsChange={setDetailTagsDraft}
+          onCopyRawUrl={copyRawUrlSafely}
+          onCreateShare={createShareSafely}
+          onMoveToTrash={moveAssetToTrash}
+          onRetryProcessing={retryProcessing}
+          onDeleteExtraction={deleteExtraction}
+        />
       )}
 
-      {actionFeedback && (
-        <div
-          key={actionFeedback.id}
-          className={`sd-action-toast sd-action-toast-${actionFeedback.tone}`}
-          role="status"
-          aria-live="polite"
-        >
-          <svg className="sd-action-toast-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <circle className="sd-action-toast-ring" cx="12" cy="12" r="9" />
-            <path className="sd-action-toast-check" d="M7.6 12.3l2.9 2.9 5.9-6.4" />
-          </svg>
-          <span>{actionFeedback.message}</span>
-        </div>
-      )}
+      {actionFeedback && <ActionToast feedback={actionFeedback} />}
 
       {uploadModalOpen && (
-        <div
-          className="sd-modal-backdrop"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) closeUploadModal();
-          }}
-        >
-          <form className="sd-upload-modal" onSubmit={submitUpload}>
-            <button type="button" className="sd-close" onClick={closeUploadModal}>
-              ×
-            </button>
-            <h2>Upload content</h2>
-
-            <div
-              className="sd-upload-drop"
-              role="button"
-              tabIndex={uploading ? -1 : 0}
-              aria-disabled={uploading}
-              onClick={() => {
-                if (!uploading) fileInputRef.current?.click();
-              }}
-              onKeyDown={(event) => {
-                if (uploading) return;
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  fileInputRef.current?.click();
-                }
-              }}
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => {
-                event.preventDefault();
-                addPendingFiles(Array.from(event.dataTransfer.files || []));
-              }}
-            >
-              <strong>Drop files</strong>
-              <span>
-                {pendingFiles.length ? `${pendingFiles.length} selected` : 'No files selected'}
-              </span>
-            </div>
-
-            {!!pendingFiles.length && (
-              <ul className="sd-file-list">
-                {pendingFiles.map((file, index) => (
-                  <li key={fileKey(file)}>
-                    <PendingFileThumb file={file} />
-                    <span className="sd-file-name">{file.name}</span>
-                    <small>
-                      {file.type || 'file'} · {formatBytes(file.size)}
-                    </small>
-                    <button type="button" onClick={() => removePendingFile(index)}>
-                      Remove
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            <label className="sd-field">
-              <span>Description</span>
-              <textarea
-                value={uploadDescription}
-                onChange={(event) => setUploadDescription(event.target.value)}
-                rows={4}
-                placeholder="Project notes, source, context..."
-              />
-            </label>
-
-            <label className="sd-field">
-              <span>Tags</span>
-              <input
-                value={uploadTags}
-                onChange={(event) => setUploadTags(event.target.value)}
-                placeholder="research, invoice, client-a"
-              />
-            </label>
-
-            <div className="sd-modal-actions">
-              <button type="button" onClick={closeUploadModal} disabled={uploading}>
-                Cancel
-              </button>
-              <button type="submit" disabled={uploading || !pendingFiles.length}>
-                {uploading ? 'Uploading...' : 'Upload'}
-              </button>
-            </div>
-          </form>
-        </div>
+        <UploadModal
+          uploading={uploading}
+          pendingFiles={pendingFiles}
+          uploadDescription={uploadDescription}
+          uploadTags={uploadTags}
+          onClose={closeUploadModal}
+          onSubmit={submitUpload}
+          onOpenFilePicker={openFilePicker}
+          onAddFiles={addPendingFiles}
+          onRemovePendingFile={removePendingFile}
+          onDescriptionChange={setUploadDescription}
+          onTagsChange={setUploadTags}
+        />
       )}
     </main>
-  );
-}
-
-async function copyTextToClipboard(text: string) {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return;
-  }
-
-  const activeElement =
-    document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  const textarea = document.createElement('textarea');
-  textarea.value = text;
-  textarea.setAttribute('readonly', '');
-  textarea.style.position = 'fixed';
-  textarea.style.left = '-9999px';
-  textarea.style.top = '0';
-  document.body.appendChild(textarea);
-  textarea.select();
-  const copied = document.execCommand('copy');
-  textarea.remove();
-  activeElement?.focus();
-  if (!copied) throw new Error('Clipboard is unavailable');
-}
-
-async function copyImageUrlToClipboard(url: string) {
-  if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') {
-    throw new Error('Image clipboard is unavailable');
-  }
-
-  const response = await fetch(url);
-  if (!response.ok) throw new Error('Could not load image for copying');
-  const sourceBlob = await response.blob();
-  const clipboardBlob =
-    sourceBlob.type === 'image/png' ? sourceBlob : await convertImageBlobToPng(sourceBlob);
-  await navigator.clipboard.write([
-    new ClipboardItem({
-      'image/png': clipboardBlob,
-    }),
-  ]);
-}
-
-async function convertImageBlobToPng(blob: Blob) {
-  const image = await loadImageFromBlob(blob);
-  const width = image.naturalWidth || image.width;
-  const height = image.naturalHeight || image.height;
-  if (!width || !height) throw new Error('Could not read image dimensions');
-
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext('2d');
-  if (!context) throw new Error('Could not prepare image for copying');
-  context.drawImage(image, 0, 0, width, height);
-
-  return new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((pngBlob) => {
-      if (pngBlob) {
-        resolve(pngBlob);
-      } else {
-        reject(new Error('Could not prepare image for copying'));
-      }
-    }, 'image/png');
-  });
-}
-
-function loadImageFromBlob(blob: Blob) {
-  return new Promise<HTMLImageElement>((resolve, reject) => {
-    const url = URL.createObjectURL(blob);
-    const image = new Image();
-    image.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve(image);
-    };
-    image.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error('Could not read image for copying'));
-    };
-    image.src = url;
-  });
-}
-
-function fileKey(file: File) {
-  return `${file.name}:${file.size}:${file.lastModified}`;
-}
-
-function parseTagNames(raw: string) {
-  const seen = new Set<string>();
-  return raw
-    .split(/[,\n]/)
-    .map((tag) => tag.trim().replace(/^#/, ''))
-    .filter((tag) => {
-      if (!tag) return false;
-      const key = tag.toLowerCase();
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-}
-
-function isImageFile(file: File) {
-  return file.type.startsWith('image/') || /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(file.name);
-}
-
-function PendingFileThumb({ file }: { file: File }) {
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!isImageFile(file)) {
-      setPreviewUrl(null);
-      return;
-    }
-    const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
-
-  if (previewUrl) {
-    return <img className="sd-file-thumb" src={previewUrl} alt="" />;
-  }
-
-  return (
-    <span className="sd-file-thumb sd-file-thumb-placeholder">
-      {file.type.split('/')[0] || 'file'}
-    </span>
-  );
-}
-
-function StatusIndicator({ status }: { status?: string }) {
-  if (!status || status === 'ready') return null;
-  if (status === 'failed') {
-    return (
-      <span
-        className="sd-status-indicator sd-status-indicator-failed"
-        title="Processing failed"
-        aria-label="Processing failed"
-      >
-        !
-      </span>
-    );
-  }
-  return (
-    <span
-      className="sd-status-indicator sd-status-indicator-active"
-      title={status}
-      aria-label={`Processing status: ${status}`}
-    >
-      <span className="sd-spinner" />
-    </span>
-  );
-}
-
-function InlineSpinner() {
-  return <span className="sd-inline-spinner" aria-hidden="true" />;
-}
-
-function Extraction({
-  title,
-  text,
-  deleting,
-  onDelete,
-}: {
-  title: string;
-  text?: string | null;
-  deleting?: boolean;
-  onDelete?: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  if (!text) return null;
-  return (
-    <section className="sd-extraction">
-      <div className="sd-extraction-header">
-        <button
-          type="button"
-          className="sd-extraction-toggle"
-          aria-expanded={open}
-          onClick={() => setOpen((current) => !current)}
-        >
-          <span>{open ? '-' : '+'}</span>
-          {title}
-        </button>
-        {onDelete && (
-          <button
-            type="button"
-            className="sd-extraction-delete"
-            disabled={deleting}
-            onClick={onDelete}
-          >
-            {deleting && <InlineSpinner />}
-            {deleting ? 'Deleting...' : 'Delete'}
-          </button>
-        )}
-      </div>
-      {open && <pre>{text}</pre>}
-    </section>
   );
 }
