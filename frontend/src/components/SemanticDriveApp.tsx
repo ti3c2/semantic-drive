@@ -1,4 +1,4 @@
-import type { FormEvent } from 'react';
+import type { FocusEvent, FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './SemanticDriveApp.css';
 import { ActionToast } from './semantic-drive/ActionToast';
@@ -62,12 +62,15 @@ export default function SemanticDriveApp() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const detailDrawerRef = useRef<HTMLElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const selectedIdRef = useRef<string | null>(null);
   const actionFeedbackTimerRef = useRef<number | null>(null);
   const actionFeedbackIdRef = useRef(0);
   const searchRequestIdRef = useRef(0);
   const searchDebounceTimerRef = useRef<number | null>(null);
   const skipInitialSearchRef = useRef(true);
+  const searchBlurredAtRef = useRef<number | null>(null);
+  const searchHadTextOnBlurRef = useRef(false);
 
   const showActionFeedback = useCallback(
     (message: string, tone: ActionFeedback['tone'] = 'success') => {
@@ -92,6 +95,28 @@ export default function SemanticDriveApp() {
     },
     [showActionFeedback],
   );
+
+  const handleSearchBlur = useCallback((event: FocusEvent<HTMLInputElement>) => {
+    const hasSearchText = event.currentTarget.value.trim().length > 0;
+    searchHadTextOnBlurRef.current = hasSearchText;
+    searchBlurredAtRef.current = hasSearchText ? Date.now() : null;
+  }, []);
+
+  const handleSearchFocus = useCallback((event: FocusEvent<HTMLInputElement>) => {
+    const blurredAt = searchBlurredAtRef.current;
+    if (!searchHadTextOnBlurRef.current || blurredAt === null) return;
+    if (Date.now() - blurredAt < 2000 || event.currentTarget.value.length === 0) return;
+
+    const input = event.currentTarget;
+    window.setTimeout(() => input.select(), 0);
+  }, []);
+
+  const clearSearch = useCallback(() => {
+    setQuery('');
+    searchHadTextOnBlurRef.current = false;
+    searchBlurredAtRef.current = null;
+    window.setTimeout(() => searchInputRef.current?.focus(), 0);
+  }, []);
 
   const addPendingFiles = useCallback((files: File[]) => {
     if (!files.length) return;
@@ -704,12 +729,25 @@ export default function SemanticDriveApp() {
         <header className="sd-header">
           <form onSubmit={runSearch} className="sd-search">
             <input
+              ref={searchInputRef}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
+              onBlur={handleSearchBlur}
+              onFocus={handleSearchFocus}
               placeholder={isTrashView ? 'Trash' : 'Search text, speech, screenshots, tags...'}
               disabled={isTrashView}
               autoFocus
             />
+            <button
+              type="button"
+              className="sd-search-clear"
+              aria-label="Clear search"
+              disabled={query.length === 0 || isTrashView}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={clearSearch}
+            >
+              &times;
+            </button>
           </form>
           <input
             ref={fileInputRef}
