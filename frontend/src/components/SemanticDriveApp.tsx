@@ -149,6 +149,9 @@ export default function SemanticDriveApp() {
   const selectedIdRef = useRef<string | null>(null);
   const actionFeedbackTimerRef = useRef<number | null>(null);
   const actionFeedbackIdRef = useRef(0);
+  const searchRequestIdRef = useRef(0);
+  const searchDebounceTimerRef = useRef<number | null>(null);
+  const skipInitialSearchRef = useRef(true);
 
   const showActionFeedback = useCallback(
     (message: string, tone: ActionFeedback['tone'] = 'success') => {
@@ -385,36 +388,72 @@ export default function SemanticDriveApp() {
     }
   }
 
-  async function runSearch(event?: FormEvent) {
-    event?.preventDefault();
-    const trimmed = query.trim();
-    if (!trimmed) {
-      setResults([]);
-      await loadAssets();
+  const runSearch = useCallback(
+    async (event?: FormEvent, nextQuery = query, nextActiveType = activeType) => {
+      event?.preventDefault();
+      if (searchDebounceTimerRef.current !== null) {
+        window.clearTimeout(searchDebounceTimerRef.current);
+        searchDebounceTimerRef.current = null;
+      }
+      const requestId = searchRequestIdRef.current + 1;
+      searchRequestIdRef.current = requestId;
+      const trimmed = nextQuery.trim();
+      if (!trimmed) {
+        setResults([]);
+        setSearching(false);
+        await loadAssets();
+        return;
+      }
+      setSearching(true);
+      setError(null);
+      try {
+        const response = await fetch(api('/api/search'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: trimmed,
+            filters: { media_types: nextActiveType === 'all' ? [] : [nextActiveType] },
+            limit: 50,
+            rerank: true,
+          }),
+        });
+        if (!response.ok) throw new Error('Search failed');
+        const payload = await response.json();
+        if (searchRequestIdRef.current === requestId) {
+          setResults(payload.results || []);
+        }
+      } catch (err) {
+        if (searchRequestIdRef.current === requestId) {
+          setError(err instanceof Error ? err.message : 'Search failed');
+        }
+      } finally {
+        if (searchRequestIdRef.current === requestId) {
+          setSearching(false);
+        }
+      }
+    },
+    [activeType, loadAssets, query],
+  );
+
+  useEffect(() => {
+    if (skipInitialSearchRef.current) {
+      skipInitialSearchRef.current = false;
       return;
     }
-    setSearching(true);
-    setError(null);
-    try {
-      const response = await fetch(api('/api/search'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: trimmed,
-          filters: { media_types: activeType === 'all' ? [] : [activeType] },
-          limit: 50,
-          rerank: true,
-        }),
-      });
-      if (!response.ok) throw new Error('Search failed');
-      const payload = await response.json();
-      setResults(payload.results || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Search failed');
-    } finally {
-      setSearching(false);
-    }
-  }
+    const timer = window.setTimeout(() => {
+      runSearch(undefined, query, activeType).catch(() => undefined);
+      if (searchDebounceTimerRef.current === timer) {
+        searchDebounceTimerRef.current = null;
+      }
+    }, 250);
+    searchDebounceTimerRef.current = timer;
+    return () => {
+      window.clearTimeout(timer);
+      if (searchDebounceTimerRef.current === timer) {
+        searchDebounceTimerRef.current = null;
+      }
+    };
+  }, [activeType, query, runSearch]);
 
   async function createShare(assetId: string) {
     setSharePayload(null);
@@ -623,7 +662,6 @@ export default function SemanticDriveApp() {
               placeholder="Search text, speech, screenshots, tags..."
               autoFocus
             />
-            <button disabled={searching}>{searching ? 'Searching...' : 'Search'}</button>
           </form>
           <button
             className="sd-upload-button"
