@@ -4,6 +4,18 @@
   min-height: 100vh;
 }
 
+.sd-app-sidebar-collapsed {
+  grid-template-columns: 1fr;
+}
+
+.sd-app-sidebar-collapsed .sd-sidebar {
+  display: none;
+}
+
+.sd-app-sidebar-collapsed .sd-main {
+  padding-left: 92px;
+}
+
 .sd-sidebar {
   position: sticky;
   top: 0;
@@ -16,11 +28,18 @@
   gap: 10px;
 }
 
+.sd-sidebar-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
 .sd-logo {
   font-size: 20px;
   font-weight: 800;
   letter-spacing: -0.04em;
-  margin-bottom: 22px;
+  flex: 1;
 }
 
 .sd-sidebar button {
@@ -32,10 +51,41 @@
   color: #dadad7;
 }
 
+.sd-sidebar .sd-sidebar-close {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  padding: 0;
+  border-radius: 12px;
+  text-align: center;
+  color: #f1eee7;
+}
+
 .sd-sidebar button.active,
 .sd-sidebar button:hover {
   background: #272724;
   color: #fff;
+}
+
+.sd-sidebar-open-button {
+  position: fixed;
+  top: 22px;
+  left: 22px;
+  z-index: 20;
+  width: 48px;
+  height: 48px;
+  border: 1px solid #e5e0d8;
+  border-radius: 14px;
+  background: #fff;
+  color: #181817;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 12px 38px rgba(0, 0, 0, 0.1);
+}
+
+.sd-sidebar-open-button:hover {
+  background: #f1eee7;
 }
 
 .sd-sidebar-note {
@@ -188,10 +238,48 @@
 }
 
 .sd-placeholder {
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 74px;
+  height: 74px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.46);
   color: #77716a;
   font-weight: 800;
+}
+
+.sd-card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 750;
+  line-height: 1.2;
+  min-width: 0;
+}
+
+.sd-card-title-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sd-card-title-media-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: #6f6961;
+}
+
+.sd-media-fallback {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
 }
 
 .sd-status-indicator {
@@ -242,14 +330,6 @@
 
 .sd-card-body {
   padding: 14px;
-}
-
-.sd-card-title {
-  font-weight: 750;
-  line-height: 1.2;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .sd-card-meta {
@@ -753,12 +833,29 @@
     grid-template-columns: 1fr;
   }
 
+  .sd-app-sidebar-collapsed .sd-sidebar {
+    display: none;
+  }
+
+  .sd-app-sidebar-collapsed .sd-main {
+    padding: 80px 16px 24px;
+  }
+
+  .sd-sidebar-open-button {
+    top: 16px;
+    left: 16px;
+  }
+
   .sd-sidebar {
     position: static;
     height: auto;
     flex-direction: row;
     align-items: center;
     overflow-x: auto;
+  }
+
+  .sd-sidebar-heading {
+    margin-bottom: 0;
   }
 
   .sd-sidebar-note {

@@ -171,6 +171,114 @@ function TrashIcon() {
   );
 }
 
+function ImageIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <circle cx="9" cy="9" r="2" />
+      <path d="m21 15-3.5-3.5a2 2 0 0 0-2.8 0L8 18" />
+    </svg>
+  );
+}
+
+function VideoIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m16 13 5.2 3.4c.7.5 1.8 0 1.8-.9v-7c0-.9-1-1.4-1.8-.9L16 11" />
+      <rect width="14" height="12" x="2" y="6" rx="2" />
+    </svg>
+  );
+}
+
+function AudioIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M9 18V5l12-2v13" />
+      <circle cx="6" cy="18" r="3" />
+      <circle cx="18" cy="16" r="3" />
+    </svg>
+  );
+}
+
+function SidebarIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="18"
+      height="18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <path d="M9 3v18" />
+      <path d="m14 9 3 3-3 3" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="18"
+      height="18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <path d="M9 3v18" />
+      <path d="m16 9-3 3 3 3" />
+    </svg>
+  );
+}
+
+function mediaTypeLabel(mediaType: string) {
+  if (mediaType === 'image') return 'Image';
+  if (mediaType === 'video') return 'Video';
+  if (mediaType === 'audio') return 'Audio';
+  return mediaType || 'File';
+}
+
+function MediaTypeIcon({ mediaType, size = 18 }: { mediaType: string; size?: number }) {
+  if (mediaType === 'image') return <ImageIcon size={size} />;
+  if (mediaType === 'video') return <VideoIcon size={size} />;
+  if (mediaType === 'audio') return <AudioIcon size={size} />;
+  return <span className="sd-media-fallback">{mediaTypeLabel(mediaType)}</span>;
+}
+
 function IconOnlyAction({ children, label }: { children: ReactNode; label: string }) {
   return (
     <>
@@ -241,6 +349,7 @@ export default function SemanticDriveApp() {
   const [savingDetail, setSavingDetail] = useState(false);
   const [deletingExtractions, setDeletingExtractions] = useState<Set<string>>(() => new Set());
   const [actionFeedback, setActionFeedback] = useState<ActionFeedback | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const detailDrawerRef = useRef<HTMLElement | null>(null);
   const selectedIdRef = useRef<string | null>(null);
@@ -854,9 +963,37 @@ export default function SemanticDriveApp() {
   }
 
   return (
-    <main className="sd-app">
-      <aside className="sd-sidebar">
-        <div className="sd-logo">Semantic Drive</div>
+    <main className={`sd-app${isSidebarOpen ? '' : ' sd-app-sidebar-collapsed'}`}>
+      {!isSidebarOpen && (
+        <button
+          className="sd-sidebar-open-button"
+          type="button"
+          aria-controls="sd-sidebar"
+          aria-expanded={isSidebarOpen}
+          title="Show sidebar"
+          onClick={() => setIsSidebarOpen(true)}
+        >
+          <IconOnlyAction label="Show sidebar">
+            <SidebarIcon />
+          </IconOnlyAction>
+        </button>
+      )}
+      <aside className="sd-sidebar" id="sd-sidebar">
+        <div className="sd-sidebar-heading">
+          <button
+            className="sd-sidebar-close"
+            type="button"
+            aria-controls="sd-sidebar"
+            aria-expanded={isSidebarOpen}
+            title="Hide sidebar"
+            onClick={() => setIsSidebarOpen(false)}
+          >
+            <IconOnlyAction label="Hide sidebar">
+              <CloseIcon />
+            </IconOnlyAction>
+          </button>
+          <div className="sd-logo">Semantic Drive</div>
+        </div>
         <button
           className={viewMode === 'library' && activeType === 'all' ? 'active' : ''}
           onClick={() => selectLibraryType('all')}
@@ -954,16 +1091,29 @@ export default function SemanticDriveApp() {
                 {item.thumbnail_url ? (
                   <img src={api(item.thumbnail_url)} alt={item.title} loading="lazy" />
                 ) : (
-                  <div className="sd-placeholder">{item.media_type}</div>
+                  <div className="sd-placeholder" title={mediaTypeLabel(item.media_type)}>
+                    <MediaTypeIcon mediaType={item.media_type} size={42} />
+                    <span className="sd-sr-only">{mediaTypeLabel(item.media_type)}</span>
+                  </div>
                 )}
                 <StatusIndicator status={item.status} />
               </div>
               <div className="sd-card-body">
-                <div className="sd-card-title">{item.title}</div>
-                <div className="sd-card-meta">
-                  <span>{item.media_type}</span>
-                  {typeof item.score === 'number' && <span>{Math.round(item.score * 100)}%</span>}
+                <div className="sd-card-title">
+                  <span className="sd-card-title-text">{item.title}</span>
+                  <span
+                    className="sd-card-title-media-icon"
+                    title={mediaTypeLabel(item.media_type)}
+                  >
+                    <MediaTypeIcon mediaType={item.media_type} />
+                    <span className="sd-sr-only">{mediaTypeLabel(item.media_type)}</span>
+                  </span>
                 </div>
+                {typeof item.score === 'number' && (
+                  <div className="sd-card-meta">
+                    <span>{Math.round(item.score * 100)}%</span>
+                  </div>
+                )}
                 {item.match && (
                   <p className="sd-match">
                     {item.match.type}: {item.match.text}
