@@ -81,9 +81,9 @@ services:
     env_file:
       - ./.env
     environment:
-      API_BASE_URL: https://localhost
-      FRONTEND_BASE_URL: https://localhost
-      ALLOWED_ORIGINS: '["https://localhost","https://127.0.0.1","http://localhost:4321","http://127.0.0.1:4321"]'
+      API_BASE_URL: https://semanticdrive.localhost
+      FRONTEND_BASE_URL: https://semanticdrive.localhost
+      ALLOWED_ORIGINS: '["https://semanticdrive.localhost","http://localhost:4321","http://127.0.0.1:4321"]'
       MINIO_EXTERNAL_ENDPOINT: localhost:9010
     expose:
       - "8000"
@@ -110,9 +110,9 @@ services:
     env_file:
       - ./.env
     environment:
-      API_BASE_URL: https://localhost
-      FRONTEND_BASE_URL: https://localhost
-      ALLOWED_ORIGINS: '["https://localhost","https://127.0.0.1","http://localhost:4321","http://127.0.0.1:4321"]'
+      API_BASE_URL: https://semanticdrive.localhost
+      FRONTEND_BASE_URL: https://semanticdrive.localhost
+      ALLOWED_ORIGINS: '["https://semanticdrive.localhost","http://localhost:4321","http://127.0.0.1:4321"]'
       MINIO_EXTERNAL_ENDPOINT: localhost:9010
     depends_on:
       backend:

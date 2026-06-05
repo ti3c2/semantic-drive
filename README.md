@@ -45,8 +45,8 @@ docker compose --env-file .env -f infra/docker-compose.yml up --build
 
 Open:
 
-- App: https://localhost
-- Backend API docs: https://localhost/docs
+- App: https://semanticdrive.localhost
+- Backend API docs: https://semanticdrive.localhost/docs
 - MinIO Console: http://localhost:9011
 - Qdrant: http://localhost:6330/dashboard
 
@@ -55,7 +55,7 @@ MinIO credentials from `.env.example`:
 - user: `semantic`
 - password: `semantic-secret`
 
-Caddy uses an internal local CA for `https://localhost` and `https://127.0.0.1`. The first browser visit may require accepting the local certificate unless you import the generated Caddy root certificate from the `caddy` container.
+Caddy uses an internal local CA for `https://semanticdrive.localhost`. The first browser visit may require accepting the local certificate unless you import the generated Caddy root certificate from the `caddy` container.
 
 To export that root certificate:
 
