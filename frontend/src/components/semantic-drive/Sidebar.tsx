@@ -4,21 +4,19 @@ import { IconOnlyAction } from './media';
 
 type SidebarProps = {
   isSidebarOpen: boolean;
-  activeType: string;
   viewMode: ViewMode;
   onOpenSidebar: () => void;
   onCloseSidebar: () => void;
-  onSelectLibraryType: (type: string) => void;
+  onSelectGalleryView: () => void;
   onSelectTrashView: () => void;
 };
 
 export function Sidebar({
   isSidebarOpen,
-  activeType,
   viewMode,
   onOpenSidebar,
   onCloseSidebar,
-  onSelectLibraryType,
+  onSelectGalleryView,
   onSelectTrashView,
 }: SidebarProps) {
   return (
@@ -55,31 +53,10 @@ export function Sidebar({
         </div>
         <button
           type="button"
-          className={viewMode === 'library' && activeType === 'all' ? 'active' : ''}
-          onClick={() => onSelectLibraryType('all')}
+          className={viewMode === 'library' ? 'active' : ''}
+          onClick={onSelectGalleryView}
         >
-          All
-        </button>
-        <button
-          type="button"
-          className={viewMode === 'library' && activeType === 'image' ? 'active' : ''}
-          onClick={() => onSelectLibraryType('image')}
-        >
-          Images
-        </button>
-        <button
-          type="button"
-          className={viewMode === 'library' && activeType === 'video' ? 'active' : ''}
-          onClick={() => onSelectLibraryType('video')}
-        >
-          Videos
-        </button>
-        <button
-          type="button"
-          className={viewMode === 'library' && activeType === 'audio' ? 'active' : ''}
-          onClick={() => onSelectLibraryType('audio')}
-        >
-          Audio
+          Gallery
         </button>
         <button
           type="button"

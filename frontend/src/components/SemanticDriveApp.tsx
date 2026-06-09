@@ -7,6 +7,11 @@ import { AssetGrid } from './semantic-drive/AssetGrid';
 import { copyImageUrlToClipboard, copyTextToClipboard } from './semantic-drive/clipboard';
 import { DetailDrawer } from './semantic-drive/DetailDrawer';
 import { FileDropzone } from './semantic-drive/FileDropzone';
+import {
+  MEDIA_TYPE_FILTERS,
+  MediaFilterBar,
+  type MediaTypeFilter,
+} from './semantic-drive/MediaFilterBar';
 import { Sidebar } from './semantic-drive/Sidebar';
 import type {
   ActionFeedback,
@@ -48,7 +53,9 @@ export default function SemanticDriveApp() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<AssetDetail | null>(null);
   const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
-  const [activeType, setActiveType] = useState<string>('all');
+  const [activeMediaTypes, setActiveMediaTypes] = useState<MediaTypeFilter[]>(() => [
+    ...MEDIA_TYPE_FILTERS,
+  ]);
   const [viewMode, setViewMode] = useState<ViewMode>('library');
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -59,7 +66,7 @@ export default function SemanticDriveApp() {
   const [savingDetail, setSavingDetail] = useState(false);
   const [deletingExtractions, setDeletingExtractions] = useState<Set<string>>(() => new Set());
   const [actionFeedback, setActionFeedback] = useState<ActionFeedback | null>(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const detailDrawerRef = useRef<HTMLElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -263,14 +270,16 @@ export default function SemanticDriveApp() {
   const isTrashView = viewMode === 'trash';
 
   const displayed = useMemo(() => {
-    const source: DisplayItem[] = isTrashView
-      ? trashAssets.map(assetToDisplay)
-      : query.trim()
-        ? results.map(resultToDisplay)
-        : assets.map(assetToDisplay);
-    if (activeType === 'all') return source;
-    return source.filter((item) => item.media_type === activeType);
-  }, [activeType, assets, isTrashView, query, results, trashAssets]);
+    if (isTrashView) return trashAssets.map(assetToDisplay);
+
+    const source: DisplayItem[] = query.trim()
+      ? results.map(resultToDisplay)
+      : assets.map(assetToDisplay);
+    if (activeMediaTypes.length === MEDIA_TYPE_FILTERS.length) return source;
+
+    const activeMediaTypeSet = new Set<string>(activeMediaTypes);
+    return source.filter((item) => activeMediaTypeSet.has(item.media_type));
+  }, [activeMediaTypes, assets, isTrashView, query, results, trashAssets]);
 
   const detailTagNames = useMemo(() => parseTagNames(detailTagsDraft), [detailTagsDraft]);
   const detailHasChanges = useMemo(() => {
@@ -364,7 +373,7 @@ export default function SemanticDriveApp() {
   }
 
   const runSearch = useCallback(
-    async (event?: FormEvent, nextQuery = query, nextActiveType = activeType) => {
+    async (event?: FormEvent, nextQuery = query, nextActiveMediaTypes = activeMediaTypes) => {
       event?.preventDefault();
       if (viewMode === 'trash') {
         setResults([]);
@@ -392,7 +401,12 @@ export default function SemanticDriveApp() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             query: trimmed,
-            filters: { media_types: nextActiveType === 'all' ? [] : [nextActiveType] },
+            filters: {
+              media_types:
+                nextActiveMediaTypes.length === MEDIA_TYPE_FILTERS.length
+                  ? []
+                  : [...nextActiveMediaTypes],
+            },
             limit: 50,
             rerank: true,
           }),
@@ -412,7 +426,7 @@ export default function SemanticDriveApp() {
         }
       }
     },
-    [activeType, loadAssets, query, viewMode],
+    [activeMediaTypes, loadAssets, query, viewMode],
   );
 
   useEffect(() => {
@@ -426,7 +440,7 @@ export default function SemanticDriveApp() {
       return;
     }
     const timer = window.setTimeout(() => {
-      runSearch(undefined, query, activeType).catch(() => undefined);
+      runSearch(undefined, query, activeMediaTypes).catch(() => undefined);
       if (searchDebounceTimerRef.current === timer) {
         searchDebounceTimerRef.current = null;
       }
@@ -438,7 +452,7 @@ export default function SemanticDriveApp() {
         searchDebounceTimerRef.current = null;
       }
     };
-  }, [activeType, query, runSearch, viewMode]);
+  }, [activeMediaTypes, query, runSearch, viewMode]);
 
   async function createShare(assetId: string) {
     setSharePayload(null);
@@ -699,9 +713,25 @@ export default function SemanticDriveApp() {
     createShare(assetId).catch((err) => reportActionError(err, 'Could not create share link'));
   }
 
-  function selectLibraryType(type: string) {
+  function toggleMediaTypeFilter(mediaType: MediaTypeFilter) {
     setViewMode('library');
-    setActiveType(type);
+    setActiveMediaTypes((current) => {
+      if (current.length === MEDIA_TYPE_FILTERS.length) return [mediaType];
+      if (current.includes(mediaType)) {
+        const next = current.filter((item) => item !== mediaType);
+        return next.length ? next : [...MEDIA_TYPE_FILTERS];
+      }
+      return MEDIA_TYPE_FILTERS.filter((item) => item === mediaType || current.includes(item));
+    });
+  }
+
+  function clearMediaFilters() {
+    setViewMode('library');
+    setActiveMediaTypes([...MEDIA_TYPE_FILTERS]);
+  }
+
+  function selectGalleryView() {
+    setViewMode('library');
   }
 
   function selectTrashView() {
@@ -717,38 +747,44 @@ export default function SemanticDriveApp() {
     <main className={`sd-app${isSidebarOpen ? '' : ' sd-app-sidebar-collapsed'}`}>
       <Sidebar
         isSidebarOpen={isSidebarOpen}
-        activeType={activeType}
         viewMode={viewMode}
         onOpenSidebar={() => setIsSidebarOpen(true)}
         onCloseSidebar={() => setIsSidebarOpen(false)}
-        onSelectLibraryType={selectLibraryType}
+        onSelectGalleryView={selectGalleryView}
         onSelectTrashView={selectTrashView}
       />
 
       <section className="sd-main">
         <header className="sd-header">
-          <form onSubmit={runSearch} className="sd-search">
-            <input
-              ref={searchInputRef}
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onBlur={handleSearchBlur}
-              onFocus={handleSearchFocus}
-              placeholder={isTrashView ? 'Trash' : 'Search text, speech, screenshots, tags...'}
-              disabled={isTrashView}
-              autoFocus
+          <div className="sd-search-stack">
+            <form onSubmit={runSearch} className="sd-search">
+              <input
+                ref={searchInputRef}
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onBlur={handleSearchBlur}
+                onFocus={handleSearchFocus}
+                placeholder={isTrashView ? 'Trash' : 'Search text, speech, screenshots, tags...'}
+                disabled={isTrashView}
+                autoFocus
+              />
+              <button
+                type="button"
+                className="sd-search-clear"
+                aria-label="Clear search"
+                disabled={query.length === 0 || isTrashView}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={clearSearch}
+              >
+                &times;
+              </button>
+            </form>
+            <MediaFilterBar
+              activeMediaTypes={activeMediaTypes}
+              onToggleMediaType={toggleMediaTypeFilter}
+              onClearFilters={clearMediaFilters}
             />
-            <button
-              type="button"
-              className="sd-search-clear"
-              aria-label="Clear search"
-              disabled={query.length === 0 || isTrashView}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={clearSearch}
-            >
-              &times;
-            </button>
-          </form>
+          </div>
           <input
             ref={fileInputRef}
             type="file"
