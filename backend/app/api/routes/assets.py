@@ -250,7 +250,7 @@ def _stream_object(
 
 
 @router.post("", response_model=AssetOut, status_code=201)
-async def upload_asset(
+def upload_asset(
     file: Annotated[UploadFile, File()],
     title: Annotated[str | None, Form()] = None,
     description: Annotated[str | None, Form()] = None,
@@ -274,7 +274,7 @@ async def upload_asset(
     sha = hashlib.sha256()
     size = 0
     with tmp_path.open("wb") as handle:
-        while chunk := await file.read(1024 * 1024):
+        while chunk := file.file.read(1024 * 1024):
             size += len(chunk)
             if size > settings.max_upload_bytes:
                 raise HTTPException(
@@ -474,6 +474,29 @@ def retry_asset_processing(asset_id: UUID, db: Session = Depends(get_db)) -> Ass
     return serialize_asset(asset)
 
 
+def _purge_trashed_asset(asset: Asset, db: Session) -> None:
+    delete_asset_points(asset.id)
+    remove_object(asset.storage_key)
+    remove_object(asset.thumbnail_key)
+    remove_object(asset.preview_key)
+    db.delete(asset)
+
+
+@router.delete("/trash", status_code=204)
+def empty_trash(db: Session = Depends(get_db)) -> None:
+    trashed_assets = db.scalars(
+        select(Asset).where(
+            Asset.owner_id == settings.demo_owner_id,
+            Asset.trashed_at.is_not(None),
+        )
+    ).all()
+
+    for asset in trashed_assets:
+        _purge_trashed_asset(asset, db)
+
+    db.commit()
+
+
 @router.delete("/{asset_id}", status_code=204)
 def delete_asset(asset_id: UUID, db: Session = Depends(get_db)) -> None:
     asset = db.scalar(
@@ -526,11 +549,7 @@ def purge_asset(asset_id: UUID, db: Session = Depends(get_db)) -> None:
     if asset.trashed_at is None:
         raise HTTPException(status_code=409, detail="Move asset to trash before deleting forever")
 
-    delete_asset_points(asset.id)
-    remove_object(asset.storage_key)
-    remove_object(asset.thumbnail_key)
-    remove_object(asset.preview_key)
-    db.delete(asset)
+    _purge_trashed_asset(asset, db)
     db.commit()
 
 

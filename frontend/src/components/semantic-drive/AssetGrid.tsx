@@ -1,5 +1,6 @@
 import type { DisplayItem } from './types';
 import { api } from './api';
+import { assetPreviewImageUrl } from './assetPreview';
 import { CopyIcon, DownloadIcon, ShareIcon, TrashIcon } from './icons';
 import { IconOnlyAction, MediaTypeIcon, mediaTypeLabel } from './media';
 import { StatusIndicator } from './StatusIndicator';
@@ -37,124 +38,132 @@ export function AssetGrid({
 }: AssetGridProps) {
   return (
     <section className="sd-grid">
-      {items.map((item) => (
-        <article
-          key={item.id}
-          className={`sd-card${isTrashView ? ' sd-card-muted' : ''}`}
-          onClick={() => {
-            if (!isTrashView) onSelectAsset(item.id);
-          }}
-        >
-          <div className="sd-thumb">
-            {item.thumbnail_url ? (
-              <img src={api(item.thumbnail_url)} alt={item.title} loading="lazy" />
-            ) : (
-              <div className="sd-placeholder" title={mediaTypeLabel(item.media_type)}>
-                <MediaTypeIcon mediaType={item.media_type} size={42} />
-                <span className="sd-sr-only">{mediaTypeLabel(item.media_type)}</span>
-              </div>
-            )}
-            <StatusIndicator status={item.status} />
-          </div>
-          <div className="sd-card-body">
-            <div className="sd-card-title">
-              <span className="sd-card-title-text">{item.title}</span>
-              <span className="sd-card-title-media-icon" title={mediaTypeLabel(item.media_type)}>
-                <MediaTypeIcon mediaType={item.media_type} />
-                <span className="sd-sr-only">{mediaTypeLabel(item.media_type)}</span>
-              </span>
+      {items.map((item) => {
+        const previewImageUrl = assetPreviewImageUrl(item);
+        return (
+          <article
+            key={item.id}
+            className={`sd-card${isTrashView ? ' sd-card-muted' : ''}`}
+            onClick={() => {
+              if (!isTrashView) onSelectAsset(item.id);
+            }}
+          >
+            <div className="sd-thumb">
+              {previewImageUrl ? (
+                <img
+                  src={api(previewImageUrl)}
+                  alt={item.title}
+                  loading={item.thumbnail_url ? 'lazy' : 'eager'}
+                  decoding="async"
+                />
+              ) : (
+                <div className="sd-placeholder" title={mediaTypeLabel(item.media_type)}>
+                  <MediaTypeIcon mediaType={item.media_type} size={42} />
+                  <span className="sd-sr-only">{mediaTypeLabel(item.media_type)}</span>
+                </div>
+              )}
+              <StatusIndicator status={item.status} />
             </div>
-            {typeof item.score === 'number' && (
-              <div className="sd-card-meta">
-                <span>{Math.round(item.score * 100)}%</span>
+            <div className="sd-card-body">
+              <div className="sd-card-title">
+                <span className="sd-card-title-text">{item.title}</span>
+                <span className="sd-card-title-media-icon" title={mediaTypeLabel(item.media_type)}>
+                  <MediaTypeIcon mediaType={item.media_type} />
+                  <span className="sd-sr-only">{mediaTypeLabel(item.media_type)}</span>
+                </span>
               </div>
-            )}
-            {item.match && (
-              <p className="sd-match">
-                {item.match.type}: {item.match.text}
-              </p>
-            )}
-            {!!item.tags.length && (
-              <div className="sd-tags">
-                {item.tags.slice(0, 4).map((tag) => (
-                  <span key={tag}>#{tag}</span>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="sd-actions" onClick={(event) => event.stopPropagation()}>
-            {isTrashView ? (
-              <>
+              {typeof item.score === 'number' && (
+                <div className="sd-card-meta">
+                  <span>{Math.round(item.score * 100)}%</span>
+                </div>
+              )}
+              {item.match && (
+                <p className="sd-match">
+                  {item.match.type}: {item.match.text}
+                </p>
+              )}
+              {!!item.tags.length && (
+                <div className="sd-tags">
+                  {item.tags.slice(0, 4).map((tag) => (
+                    <span key={tag}>#{tag}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="sd-actions" onClick={(event) => event.stopPropagation()}>
+              {isTrashView ? (
+                <>
+                  <button
+                    type="button"
+                    className="sd-restore-action"
+                    onClick={() => onRestoreAsset(item.id)}
+                    disabled={restoringIds.has(item.id)}
+                  >
+                    {restoringIds.has(item.id) ? 'Restoring...' : 'Restore'}
+                  </button>
+                  <button
+                    type="button"
+                    className="sd-danger-action"
+                    onClick={() => onPurgeAsset(item.id)}
+                    disabled={purgingIds.has(item.id)}
+                  >
+                    {purgingIds.has(item.id) ? 'Deleting...' : 'Delete forever'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Copy"
+                    title="Copy"
+                    onClick={() => onCopyItem(item)}
+                  >
+                    <IconOnlyAction label="Copy">
+                      <CopyIcon />
+                    </IconOnlyAction>
+                  </button>
+                  <a href={api(item.download_url)} aria-label="Download" title="Download">
+                    <IconOnlyAction label="Download">
+                      <DownloadIcon />
+                    </IconOnlyAction>
+                  </a>
+                  <button
+                    type="button"
+                    aria-label="Share"
+                    title="Share"
+                    onClick={() => onCreateShare(item.id)}
+                  >
+                    <IconOnlyAction label="Share">
+                      <ShareIcon />
+                    </IconOnlyAction>
+                  </button>
+                  <button
+                    type="button"
+                    className="sd-danger-action"
+                    aria-label={trashingIds.has(item.id) ? 'Moving to trash' : 'Trash'}
+                    title={trashingIds.has(item.id) ? 'Moving to trash' : 'Trash'}
+                    onClick={() => onMoveToTrash(item.id)}
+                    disabled={trashingIds.has(item.id)}
+                  >
+                    <IconOnlyAction label={trashingIds.has(item.id) ? 'Moving to trash' : 'Trash'}>
+                      <TrashIcon />
+                    </IconOnlyAction>
+                  </button>
+                </>
+              )}
+              {!isTrashView && item.status === 'failed' && (
                 <button
                   type="button"
-                  className="sd-restore-action"
-                  onClick={() => onRestoreAsset(item.id)}
-                  disabled={restoringIds.has(item.id)}
+                  onClick={() => onRetryProcessing(item.id)}
+                  disabled={retryingIds.has(item.id)}
                 >
-                  {restoringIds.has(item.id) ? 'Restoring...' : 'Restore'}
+                  {retryingIds.has(item.id) ? 'Retrying...' : 'Retry'}
                 </button>
-                <button
-                  type="button"
-                  className="sd-danger-action"
-                  onClick={() => onPurgeAsset(item.id)}
-                  disabled={purgingIds.has(item.id)}
-                >
-                  {purgingIds.has(item.id) ? 'Deleting...' : 'Delete forever'}
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  aria-label="Copy"
-                  title="Copy"
-                  onClick={() => onCopyItem(item)}
-                >
-                  <IconOnlyAction label="Copy">
-                    <CopyIcon />
-                  </IconOnlyAction>
-                </button>
-                <a href={api(item.download_url)} aria-label="Download" title="Download">
-                  <IconOnlyAction label="Download">
-                    <DownloadIcon />
-                  </IconOnlyAction>
-                </a>
-                <button
-                  type="button"
-                  aria-label="Share"
-                  title="Share"
-                  onClick={() => onCreateShare(item.id)}
-                >
-                  <IconOnlyAction label="Share">
-                    <ShareIcon />
-                  </IconOnlyAction>
-                </button>
-                <button
-                  type="button"
-                  className="sd-danger-action"
-                  aria-label={trashingIds.has(item.id) ? 'Moving to trash' : 'Trash'}
-                  title={trashingIds.has(item.id) ? 'Moving to trash' : 'Trash'}
-                  onClick={() => onMoveToTrash(item.id)}
-                  disabled={trashingIds.has(item.id)}
-                >
-                  <IconOnlyAction label={trashingIds.has(item.id) ? 'Moving to trash' : 'Trash'}>
-                    <TrashIcon />
-                  </IconOnlyAction>
-                </button>
-              </>
-            )}
-            {!isTrashView && item.status === 'failed' && (
-              <button
-                type="button"
-                onClick={() => onRetryProcessing(item.id)}
-                disabled={retryingIds.has(item.id)}
-              >
-                {retryingIds.has(item.id) ? 'Retrying...' : 'Retry'}
-              </button>
-            )}
-          </div>
-        </article>
-      ))}
+              )}
+            </div>
+          </article>
+        );
+      })}
     </section>
   );
 }

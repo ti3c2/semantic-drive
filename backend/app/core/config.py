@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://semantic:semantic@localhost:5432/semantic_drive"
     redis_url: str = "redis://localhost:6379/0"
     rq_queue_name: str = "semantic-drive"
+    worker_concurrency: int = Field(default=5, ge=1, le=32)
+    ingestion_job_retries: int = Field(default=2, ge=0, le=10)
+    ingestion_retry_delay_seconds: int = Field(default=30, ge=0)
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str | None = None
     qdrant_collection: str = "semantic_drive_chunks"

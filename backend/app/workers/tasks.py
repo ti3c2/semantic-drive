@@ -239,7 +239,10 @@ def process_asset(asset_id: str) -> None:
                 .limit(1)
             )
             if job:
+                job.status = "failed"
+                job.current_step = "failed"
                 job.error_message = str(exc)
+                job.attempts += 1
             asset.processing_status = "failed"
             db.commit()
             publish_asset_event(asset.id, "failed", str(exc), 0)

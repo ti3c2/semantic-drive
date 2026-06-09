@@ -7,6 +7,8 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
+    "test:semantic-drive": "node --test --experimental-strip-types tests/*.test.ts",
+    "test:upload": "node --test --experimental-strip-types tests/uploadQueue.test.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

@@ -8,3 +8,11 @@ def test_embedding_api_base_defaults_to_main_api_base() -> None:
 
     assert settings.openai_emb_api_base is None
     assert settings.get_openai_emb_client().base_url == "https://api.mistral.ai/v1/"
+
+
+def test_ingestion_defaults_use_limited_concurrency_and_retries() -> None:
+    settings = Settings()
+
+    assert settings.worker_concurrency == 5
+    assert settings.ingestion_job_retries == 2
+    assert settings.ingestion_retry_delay_seconds == 30

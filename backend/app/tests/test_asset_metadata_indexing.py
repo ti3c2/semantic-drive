@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timezone
+from io import BytesIO
 from uuid import uuid4
 
 import pytest
@@ -130,12 +130,10 @@ def test_upload_asset_trims_extension_from_asset_filename(monkeypatch) -> None:
         assets, "enqueue_asset_ingestion", lambda asset_id: enqueued_asset_ids.append(asset_id)
     )
 
-    result = asyncio.run(
-        assets.upload_asset(
-            FakeUploadFile("Screenshot.final.PNG", "image/png", b"image-bytes"),
-            title="Screenshot.final.PNG",
-            db=db,
-        )
+    result = assets.upload_asset(
+        FakeUploadFile("Screenshot.final.PNG", "image/png", b"image-bytes"),
+        title="Screenshot.final.PNG",
+        db=db,
     )
 
     assert result.original_filename == "Screenshot.final"
@@ -257,6 +255,42 @@ def test_purge_asset_removes_trashed_asset_storage_and_row(monkeypatch) -> None:
     assert db.commits == 1
 
 
+def test_empty_trash_purges_all_trashed_asset_storage_and_rows(monkeypatch) -> None:
+    first_asset = make_asset()
+    first_asset.trashed_at = datetime.now(timezone.utc)
+    first_asset.thumbnail_key = "owners/demo/assets/first-thumb.jpg"
+    first_asset.preview_key = "owners/demo/assets/first-preview.jpg"
+
+    second_asset = make_asset()
+    second_asset.trashed_at = datetime.now(timezone.utc)
+    second_asset.storage_key = "owners/demo/assets/second.jpg"
+    second_asset.thumbnail_key = "owners/demo/assets/second-thumb.jpg"
+    second_asset.preview_key = "owners/demo/assets/second-preview.jpg"
+
+    db = FakeTrashDb([first_asset, second_asset])
+    deleted_asset_ids = []
+    removed_objects = []
+
+    monkeypatch.setattr(
+        assets, "delete_asset_points", lambda asset_id: deleted_asset_ids.append(asset_id)
+    )
+    monkeypatch.setattr(assets, "remove_object", lambda key: removed_objects.append(key))
+
+    assets.empty_trash(db)
+
+    assert deleted_asset_ids == [first_asset.id, second_asset.id]
+    assert removed_objects == [
+        first_asset.storage_key,
+        first_asset.thumbnail_key,
+        first_asset.preview_key,
+        second_asset.storage_key,
+        second_asset.thumbnail_key,
+        second_asset.preview_key,
+    ]
+    assert db.deleted == [first_asset, second_asset]
+    assert db.commits == 1
+
+
 def test_reindex_asset_search_rebuilds_chunks_and_publishes_progress(monkeypatch) -> None:
     asset = make_asset()
     asset.extractions = [
@@ -322,6 +356,30 @@ class FakeRouteDb:
         self.commits += 1
 
 
+class FakeTrashDb:
+    def __init__(self, assets: list[Asset]) -> None:
+        self.assets = assets
+        self.deleted = []
+        self.commits = 0
+
+    def scalars(self, _stmt):
+        return FakeScalarResult(self.assets)
+
+    def delete(self, item) -> None:
+        self.deleted.append(item)
+
+    def commit(self) -> None:
+        self.commits += 1
+
+
+class FakeScalarResult:
+    def __init__(self, items: list[Asset]) -> None:
+        self.items = items
+
+    def all(self) -> list[Asset]:
+        return self.items
+
+
 class FakeUploadDb:
     def __init__(self) -> None:
         self.asset = None
@@ -352,12 +410,7 @@ class FakeUploadFile:
     def __init__(self, filename: str, content_type: str, content: bytes) -> None:
         self.filename = filename
         self.content_type = content_type
-        self._content = content
-
-    async def read(self, _size: int) -> bytes:
-        content = self._content
-        self._content = b""
-        return content
+        self.file = BytesIO(content)
 
 
 class FakeIndexDb:

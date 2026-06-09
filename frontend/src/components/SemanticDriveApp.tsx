@@ -23,6 +23,7 @@ import type {
   ViewMode,
 } from './semantic-drive/types';
 import { UploadModal } from './semantic-drive/UploadModal';
+import { uploadAssetBatch } from './semantic-drive/uploadQueue';
 import {
   assetToDisplay,
   fileKey,
@@ -49,6 +50,7 @@ export default function SemanticDriveApp() {
   const [trashingIds, setTrashingIds] = useState<Set<string>>(() => new Set());
   const [restoringIds, setRestoringIds] = useState<Set<string>>(() => new Set());
   const [purgingIds, setPurgingIds] = useState<Set<string>>(() => new Set());
+  const [emptyingTrash, setEmptyingTrash] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<AssetDetail | null>(null);
@@ -363,20 +365,33 @@ export default function SemanticDriveApp() {
     const description = metadata.description.trim();
     const tagNames = parseTagNames(metadata.tags);
     try {
-      for (const file of files) {
-        const form = new FormData();
-        form.append('file', file);
-        form.append('title', file.name);
-        if (description) form.append('description', description);
-        if (tagNames.length) form.append('tag_names', tagNames.join(','));
-        const response = await fetch(api('/api/assets'), { method: 'POST', body: form });
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}));
-          throw new Error(payload.detail || `Upload failed for ${file.name}`);
-        }
-        const asset = (await response.json()) as Asset;
-        setAssets((current) => [asset, ...current.filter((item) => item.id !== asset.id)]);
+      const result = await uploadAssetBatch(
+        files,
+        { description, tagNames },
+        { endpoint: api('/api/assets') },
+      );
+
+      if (result.uploaded.length) {
+        const uploadedAssets = result.uploaded.map(({ asset }) => asset).reverse();
+        const uploadedIds = new Set(uploadedAssets.map((asset) => asset.id));
+        setAssets((current) => [
+          ...uploadedAssets,
+          ...current.filter((item) => !uploadedIds.has(item.id)),
+        ]);
       }
+
+      if (result.failed.length) {
+        setPendingFiles(result.failed.map(({ file }) => file));
+        const [firstFailure] = result.failed;
+        const failedNames = result.failed.map(({ file }) => file.name).join(', ');
+        const message =
+          result.failed.length === 1
+            ? firstFailure.error.message
+            : `${result.failed.length} uploads failed: ${failedNames}`;
+        setError(message);
+        return;
+      }
+
       setUploadModalOpen(false);
       resetUploadForm();
     } catch (err) {
@@ -783,6 +798,39 @@ export default function SemanticDriveApp() {
     }
   }
 
+  async function emptyTrash() {
+    if (emptyingTrash || trashAssets.length === 0) return;
+    const trashIds = trashAssets.map((asset) => asset.id);
+    const fileLabel = `${trashIds.length} file${trashIds.length === 1 ? '' : 's'}`;
+    if (!window.confirm(`Delete ${fileLabel} forever?`)) return;
+
+    setEmptyingTrash(true);
+    setPurgingIds((current) => {
+      const next = new Set(current);
+      trashIds.forEach((assetId) => next.add(assetId));
+      return next;
+    });
+    setError(null);
+    try {
+      const response = await fetch(api('/api/assets/trash'), { method: 'DELETE' });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.detail || 'Could not empty trash');
+      }
+      setTrashAssets([]);
+      showActionFeedback('Trash emptied');
+    } catch (err) {
+      reportActionError(err, 'Could not empty trash');
+    } finally {
+      setEmptyingTrash(false);
+      setPurgingIds((current) => {
+        const next = new Set(current);
+        trashIds.forEach((assetId) => next.delete(assetId));
+        return next;
+      });
+    }
+  }
+
   async function copyRawUrl(path: string) {
     await copyTextToClipboard(api(path));
     showActionFeedback('Link copied to clipboard');
@@ -909,13 +957,30 @@ export default function SemanticDriveApp() {
 
         {error && <div className="sd-error">{error}</div>}
 
-        <div className="sd-result-count">
-          {isTrashView
-            ? `${displayed.length} trashed file${displayed.length === 1 ? '' : 's'}`
-            : query.trim()
-              ? `${displayed.length} semantic result${displayed.length === 1 ? '' : 's'}`
-              : `${displayed.length} file${displayed.length === 1 ? '' : 's'}`}
-          {searching && <span> searching...</span>}
+        <div className="sd-result-toolbar">
+          <div className="sd-result-count">
+            {isTrashView
+              ? `${displayed.length} trashed file${displayed.length === 1 ? '' : 's'}`
+              : query.trim()
+                ? `${displayed.length} semantic result${displayed.length === 1 ? '' : 's'}`
+                : `${displayed.length} file${displayed.length === 1 ? '' : 's'}`}
+            {searching && <span> searching...</span>}
+          </div>
+          {isTrashView && (
+            <button
+              type="button"
+              className="sd-empty-trash-button"
+              onClick={emptyTrash}
+              disabled={
+                trashAssets.length === 0 ||
+                emptyingTrash ||
+                restoringIds.size > 0 ||
+                purgingIds.size > 0
+              }
+            >
+              {emptyingTrash ? 'Emptying...' : 'Empty trash'}
+            </button>
+          )}
         </div>
 
         <AssetGrid
