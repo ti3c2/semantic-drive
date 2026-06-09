@@ -81,6 +81,7 @@ services:
     env_file:
       - ./.env
     environment:
+      UV_PROJECT_ENVIRONMENT: /tmp/semantic-drive-venv
       API_BASE_URL: https://semanticdrive.localhost
       FRONTEND_BASE_URL: https://semanticdrive.localhost
       ALLOWED_ORIGINS: '["https://semanticdrive.localhost","http://localhost:4321","http://127.0.0.1:4321"]'
@@ -110,6 +111,7 @@ services:
     env_file:
       - ./.env
     environment:
+      UV_PROJECT_ENVIRONMENT: /tmp/semantic-drive-venv
       API_BASE_URL: https://semanticdrive.localhost
       FRONTEND_BASE_URL: https://semanticdrive.localhost
       ALLOWED_ORIGINS: '["https://semanticdrive.localhost","http://localhost:4321","http://127.0.0.1:4321"]'

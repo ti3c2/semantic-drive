@@ -61,8 +61,11 @@ export default function SemanticDriveApp() {
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [uploadDescription, setUploadDescription] = useState('');
   const [uploadTags, setUploadTags] = useState('');
+  const [filenameDraft, setFilenameDraft] = useState('');
+  const [isEditingFilename, setIsEditingFilename] = useState(false);
   const [detailDescriptionDraft, setDetailDescriptionDraft] = useState('');
   const [detailTagsDraft, setDetailTagsDraft] = useState('');
+  const [savingFilename, setSavingFilename] = useState(false);
   const [savingDetail, setSavingDetail] = useState(false);
   const [deletingExtractions, setDeletingExtractions] = useState<Set<string>>(() => new Set());
   const [actionFeedback, setActionFeedback] = useState<ActionFeedback | null>(null);
@@ -267,6 +270,17 @@ export default function SemanticDriveApp() {
     setDetailTagsDraft(detail.tags.map((tag) => tag.name).join(', '));
   }, [detail?.id]);
 
+  useEffect(() => {
+    if (!detail) {
+      setFilenameDraft('');
+      setIsEditingFilename(false);
+      return;
+    }
+    if (!isEditingFilename) {
+      setFilenameDraft(detail.original_filename);
+    }
+  }, [detail?.id, detail?.original_filename, isEditingFilename]);
+
   const isTrashView = viewMode === 'trash';
 
   const displayed = useMemo(() => {
@@ -470,6 +484,95 @@ export default function SemanticDriveApp() {
     showActionFeedback('Share link copied to clipboard');
   }
 
+  function applyAssetUpdate(asset: Asset) {
+    const tagNames = asset.tags.map((tag) => tag.name);
+    setAssets((current) => current.map((item) => (item.id === asset.id ? asset : item)));
+    setTrashAssets((current) => current.map((item) => (item.id === asset.id ? asset : item)));
+    setResults((current) =>
+      current.map((result) =>
+        result.asset_id === asset.id
+          ? {
+              ...result,
+              title: asset.display_title || asset.original_filename,
+              original_filename: asset.original_filename,
+              tags: tagNames,
+            }
+          : result,
+      ),
+    );
+    setDetail((current) => (current?.id === asset.id ? { ...current, ...asset } : current));
+  }
+
+  function startFilenameEdit() {
+    if (!detail || savingFilename) return;
+    setFilenameDraft(detail.original_filename);
+    setIsEditingFilename(true);
+  }
+
+  function cancelFilenameEdit() {
+    setFilenameDraft(detail?.original_filename ?? '');
+    setIsEditingFilename(false);
+  }
+
+  async function saveFilename() {
+    if (!detail || savingFilename) return;
+    const nextFilename = filenameDraft.trim();
+    if (!nextFilename) {
+      setError('Filename cannot be blank');
+      return;
+    }
+    if (nextFilename === detail.original_filename) {
+      setFilenameDraft(detail.original_filename);
+      setIsEditingFilename(false);
+      return;
+    }
+
+    const assetId = detail.id;
+    const previousStatus = detail.processing_status;
+    setSavingFilename(true);
+    setError(null);
+    setDetail((current) =>
+      current?.id === assetId ? { ...current, processing_status: 'embedding' } : current,
+    );
+    setAssets((current) =>
+      current.map((asset) =>
+        asset.id === assetId ? { ...asset, processing_status: 'embedding' } : asset,
+      ),
+    );
+    try {
+      const response = await fetch(api(`/api/assets/${assetId}`), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ original_filename: nextFilename }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        const message =
+          typeof payload.detail === 'string' ? payload.detail : 'Could not save filename';
+        throw new Error(message);
+      }
+      const asset = (await response.json()) as Asset;
+      applyAssetUpdate(asset);
+      setFilenameDraft(asset.original_filename);
+      setIsEditingFilename(false);
+      if (query.trim()) {
+        await runSearch();
+      }
+    } catch (err) {
+      setDetail((current) =>
+        current?.id === assetId ? { ...current, processing_status: previousStatus } : current,
+      );
+      setAssets((current) =>
+        current.map((asset) =>
+          asset.id === assetId ? { ...asset, processing_status: previousStatus } : asset,
+        ),
+      );
+      setError(err instanceof Error ? err.message : 'Could not save filename');
+    } finally {
+      setSavingFilename(false);
+    }
+  }
+
   async function saveDetailMetadata(event: FormEvent) {
     event.preventDefault();
     if (!detail || savingDetail) return;
@@ -500,15 +603,7 @@ export default function SemanticDriveApp() {
       }
       const asset = (await response.json()) as Asset;
       const tagNames = asset.tags.map((tag) => tag.name);
-      setAssets((current) => current.map((item) => (item.id === asset.id ? asset : item)));
-      setResults((current) =>
-        current.map((result) =>
-          result.asset_id === asset.id
-            ? { ...result, title: asset.display_title || asset.original_filename, tags: tagNames }
-            : result,
-        ),
-      );
-      setDetail((current) => (current?.id === asset.id ? { ...current, ...asset } : current));
+      applyAssetUpdate(asset);
       setDetailDescriptionDraft(asset.description ?? '');
       setDetailTagsDraft(tagNames.join(', '));
       if (query.trim()) {
@@ -839,14 +934,21 @@ export default function SemanticDriveApp() {
           detail={detail}
           drawerRef={detailDrawerRef}
           sharePayload={sharePayload}
+          filenameDraft={filenameDraft}
           descriptionDraft={detailDescriptionDraft}
           tagsDraft={detailTagsDraft}
+          isEditingFilename={isEditingFilename}
           detailHasChanges={detailHasChanges}
+          savingFilename={savingFilename}
           savingDetail={savingDetail}
           deletingExtractions={deletingExtractions}
           trashingIds={trashingIds}
           retryingIds={retryingIds}
           onClose={closeDetailDrawer}
+          onStartFilenameEdit={startFilenameEdit}
+          onFilenameChange={setFilenameDraft}
+          onSaveFilename={saveFilename}
+          onCancelFilenameEdit={cancelFilenameEdit}
           onSaveMetadata={saveDetailMetadata}
           onDescriptionChange={setDetailDescriptionDraft}
           onTagsChange={setDetailTagsDraft}

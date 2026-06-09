@@ -54,6 +54,7 @@ class AssetDetailOut(AssetOut):
 
 
 class AssetUpdate(BaseModel):
+    original_filename: str | None = Field(default=None, max_length=500)
     display_title: str | None = Field(default=None, max_length=500)
     description: str | None = None
     tag_names: list[str] | None = None

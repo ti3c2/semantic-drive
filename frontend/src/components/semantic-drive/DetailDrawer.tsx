@@ -1,8 +1,8 @@
-import type { FormEvent, RefObject } from 'react';
+import type { FormEvent, KeyboardEvent, RefObject } from 'react';
 import type { AssetDetail, SharePayload } from './types';
 import { api } from './api';
 import { Extraction } from './Extraction';
-import { CopyIcon, DownloadIcon, ShareIcon, TrashIcon } from './icons';
+import { CheckIcon, CopyIcon, DownloadIcon, ShareIcon, TrashIcon, XIcon } from './icons';
 import { IconOnlyAction } from './media';
 import { InlineSpinner } from './StatusIndicator';
 import { formatBytes } from './utils';
@@ -11,14 +11,21 @@ type DetailDrawerProps = {
   detail: AssetDetail;
   drawerRef: RefObject<HTMLElement | null>;
   sharePayload: SharePayload | null;
+  filenameDraft: string;
   descriptionDraft: string;
   tagsDraft: string;
+  isEditingFilename: boolean;
   detailHasChanges: boolean;
+  savingFilename: boolean;
   savingDetail: boolean;
   deletingExtractions: ReadonlySet<string>;
   trashingIds: ReadonlySet<string>;
   retryingIds: ReadonlySet<string>;
   onClose: () => void;
+  onStartFilenameEdit: () => void;
+  onFilenameChange: (value: string) => void;
+  onSaveFilename: () => void;
+  onCancelFilenameEdit: () => void;
   onSaveMetadata: (event: FormEvent) => void;
   onDescriptionChange: (value: string) => void;
   onTagsChange: (value: string) => void;
@@ -33,14 +40,21 @@ export function DetailDrawer({
   detail,
   drawerRef,
   sharePayload,
+  filenameDraft,
   descriptionDraft,
   tagsDraft,
+  isEditingFilename,
   detailHasChanges,
+  savingFilename,
   savingDetail,
   deletingExtractions,
   trashingIds,
   retryingIds,
   onClose,
+  onStartFilenameEdit,
+  onFilenameChange,
+  onSaveFilename,
+  onCancelFilenameEdit,
   onSaveMetadata,
   onDescriptionChange,
   onTagsChange,
@@ -50,12 +64,66 @@ export function DetailDrawer({
   onRetryProcessing,
   onDeleteExtraction,
 }: DetailDrawerProps) {
+  function handleFilenameKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      onSaveFilename();
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      onCancelFilenameEdit();
+    }
+  }
+
   return (
     <aside className="sd-drawer" ref={drawerRef}>
       <button type="button" className="sd-close" onClick={onClose}>
         &times;
       </button>
-      <h2>{detail.display_title || detail.original_filename}</h2>
+      {isEditingFilename ? (
+        <div className="sd-filename-editor">
+          <input
+            value={filenameDraft}
+            onChange={(event) => onFilenameChange(event.target.value)}
+            onKeyDown={handleFilenameKeyDown}
+            onFocus={(event) => event.currentTarget.select()}
+            aria-label="Filename"
+            disabled={savingFilename}
+            autoFocus
+          />
+          <button
+            type="button"
+            className="sd-filename-save"
+            aria-label={savingFilename ? 'Saving filename' : 'Save filename'}
+            title={savingFilename ? 'Saving filename' : 'Save filename'}
+            onClick={onSaveFilename}
+            disabled={savingFilename || !filenameDraft.trim()}
+          >
+            {savingFilename ? <InlineSpinner /> : <CheckIcon />}
+          </button>
+          <button
+            type="button"
+            className="sd-filename-cancel"
+            aria-label="Cancel filename edit"
+            title="Cancel filename edit"
+            onClick={onCancelFilenameEdit}
+            disabled={savingFilename}
+          >
+            <XIcon />
+          </button>
+        </div>
+      ) : (
+        <h2 className="sd-filename-heading">
+          <button
+            type="button"
+            className="sd-filename-title"
+            onClick={onStartFilenameEdit}
+            title="Edit filename"
+          >
+            {detail.original_filename}
+          </button>
+        </h2>
+      )}
       <div className="sd-detail-meta">
         {detail.mime_type} &middot; {formatBytes(detail.file_size_bytes)} &middot;{' '}
         {detail.processing_status}

@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from uuid import uuid4
+
+import pytest
+from fastapi import HTTPException
 
 from app.api.routes import assets
 from app.db.models import Asset, AssetChunk, AssetExtraction, Tag
@@ -55,6 +59,105 @@ def test_update_asset_refreshes_search_index_for_metadata_changes(monkeypatch) -
     assert result.description == "Fresh searchable description"
     assert [tag.name for tag in asset.tags] == ["fresh"]
     assert reindexed == [(asset.id, "ready")]
+
+
+def test_update_asset_renames_filename_and_syncs_filename_title(monkeypatch) -> None:
+    asset = make_asset()
+    asset.display_title = asset.original_filename
+    db = FakeRouteDb(asset)
+    reindexed = []
+
+    monkeypatch.setattr(
+        assets,
+        "_reindex_asset_search",
+        lambda item, _db, previous_status: reindexed.append(
+            (item.original_filename, item.display_title, previous_status)
+        ),
+    )
+
+    result = assets.update_asset(
+        asset.id,
+        AssetUpdate(original_filename="renamed scan.jpg"),
+        db,
+    )
+
+    assert result.original_filename == "renamed scan.jpg"
+    assert result.display_title == "renamed scan.jpg"
+    assert asset.original_filename == "renamed scan.jpg"
+    assert reindexed == [("renamed scan.jpg", "renamed scan.jpg", "ready")]
+
+
+def test_update_asset_renames_filename_without_overwriting_custom_title(monkeypatch) -> None:
+    asset = make_asset()
+    db = FakeRouteDb(asset)
+
+    monkeypatch.setattr(assets, "_reindex_asset_search", lambda *_args: None)
+
+    result = assets.update_asset(
+        asset.id,
+        AssetUpdate(original_filename="renamed scan.jpg"),
+        db,
+    )
+
+    assert result.original_filename == "renamed scan.jpg"
+    assert result.display_title == "Original scan"
+
+
+def test_update_asset_rejects_blank_filename() -> None:
+    asset = make_asset()
+    db = FakeRouteDb(asset)
+
+    with pytest.raises(HTTPException) as exc_info:
+        assets.update_asset(asset.id, AssetUpdate(original_filename="   "), db)
+
+    assert exc_info.value.status_code == 422
+    assert asset.original_filename == "scan.jpg"
+
+
+def test_upload_asset_trims_extension_from_asset_filename(monkeypatch) -> None:
+    db = FakeUploadDb()
+    stored_objects = []
+    enqueued_asset_ids = []
+
+    monkeypatch.setattr(
+        assets,
+        "fput_file",
+        lambda key, path, content_type: stored_objects.append((key, path.name, content_type)),
+    )
+    monkeypatch.setattr(assets, "get_or_create_tags", lambda *_args: [])
+    monkeypatch.setattr(assets, "get_folders", lambda *_args: [])
+    monkeypatch.setattr(
+        assets, "enqueue_asset_ingestion", lambda asset_id: enqueued_asset_ids.append(asset_id)
+    )
+
+    result = asyncio.run(
+        assets.upload_asset(
+            FakeUploadFile("Screenshot.final.PNG", "image/png", b"image-bytes"),
+            title="Screenshot.final.PNG",
+            db=db,
+        )
+    )
+
+    assert result.original_filename == "Screenshot.final"
+    assert result.display_title == "Screenshot.final"
+    assert stored_objects[0][0].endswith("/Screenshot.final.PNG")
+    assert stored_objects[0][1] == "Screenshot.final.PNG"
+    assert stored_objects[0][2] == "image/png"
+    assert enqueued_asset_ids == [result.id]
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected"),
+    [
+        ("scan.jpg", "scan"),
+        ("Screenshot.final.PNG", "Screenshot.final"),
+        ("archive.tar.gz", "archive.tar"),
+        ("README", "README"),
+        (".env", ".env"),
+    ],
+)
+def test_trim_file_extension(filename: str, expected: str) -> None:
+    assert assets._trim_file_extension(filename) == expected
 
 
 def test_delete_asset_extraction_removes_detail_text_before_reindex(monkeypatch) -> None:
@@ -217,6 +320,44 @@ class FakeRouteDb:
 
     def commit(self) -> None:
         self.commits += 1
+
+
+class FakeUploadDb:
+    def __init__(self) -> None:
+        self.asset = None
+        self.added = []
+        self.commits = 0
+        self.refreshed = []
+
+    def add(self, item) -> None:
+        self.added.append(item)
+        if isinstance(item, Asset):
+            self.asset = item
+
+    def commit(self) -> None:
+        self.commits += 1
+
+    def refresh(self, item) -> None:
+        now = datetime.now(timezone.utc)
+        item.created_at = now
+        item.updated_at = now
+        item.visibility = item.visibility or "private"
+        self.refreshed.append(item)
+
+    def scalar(self, _stmt):
+        return self.asset
+
+
+class FakeUploadFile:
+    def __init__(self, filename: str, content_type: str, content: bytes) -> None:
+        self.filename = filename
+        self.content_type = content_type
+        self._content = content
+
+    async def read(self, _size: int) -> bytes:
+        content = self._content
+        self._content = b""
+        return content
 
 
 class FakeIndexDb:

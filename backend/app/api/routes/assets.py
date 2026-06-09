@@ -39,9 +39,24 @@ EXTRACTION_TYPE_ALIASES = {
 }
 
 
-def _safe_filename(filename: str | None) -> str:
-    filename = Path(filename or "upload.bin").name
+def _safe_filename(filename: str | None, *, default: str = "upload.bin") -> str:
+    filename = Path(filename or default).name
     return filename.replace("/", "_").replace("\\", "_") or "upload.bin"
+
+
+def _editable_filename(filename: str) -> str:
+    cleaned = Path(filename.strip()).name.replace("/", "_").replace("\\", "_")
+    if not cleaned or cleaned in {".", ".."}:
+        raise HTTPException(status_code=422, detail="Filename cannot be blank")
+    return cleaned
+
+
+def _trim_file_extension(filename: str) -> str:
+    suffix = Path(filename).suffix
+    if not suffix:
+        return filename
+    trimmed = filename[: -len(suffix)]
+    return trimmed or filename
 
 
 def _parse_tag_names(raw: str | None) -> list[str]:
@@ -243,17 +258,18 @@ async def upload_asset(
     folder_ids: Annotated[str | None, Form()] = None,
     db: Session = Depends(get_db),
 ) -> AssetOut:
-    filename = _safe_filename(file.filename)
-    mime_type = guess_mime_type(filename, file.content_type)
+    storage_filename = _safe_filename(file.filename)
+    asset_filename = _trim_file_extension(storage_filename)
+    mime_type = guess_mime_type(storage_filename, file.content_type)
     try:
-        media_type = detect_media_type(filename, mime_type)
+        media_type = detect_media_type(storage_filename, mime_type)
     except ValueError as exc:
         raise HTTPException(status_code=415, detail=str(exc)) from exc
 
     asset_id = uuid.uuid4()
     upload_dir = settings.tmp_dir / "uploads" / str(asset_id)
     upload_dir.mkdir(parents=True, exist_ok=True)
-    tmp_path = upload_dir / filename
+    tmp_path = upload_dir / storage_filename
 
     sha = hashlib.sha256()
     size = 0
@@ -267,14 +283,16 @@ async def upload_asset(
             sha.update(chunk)
             handle.write(chunk)
 
-    storage_key = f"owners/{settings.demo_owner_id}/assets/{asset_id}/original/{filename}"
+    storage_key = f"owners/{settings.demo_owner_id}/assets/{asset_id}/original/{storage_filename}"
     fput_file(storage_key, tmp_path, content_type=mime_type)
 
     asset = Asset(
         id=asset_id,
         owner_id=settings.demo_owner_id,
-        original_filename=filename,
-        display_title=title or filename,
+        original_filename=asset_filename,
+        display_title=_trim_file_extension(_safe_filename(title, default=asset_filename))
+        if title
+        else asset_filename,
         description=description,
         media_type=media_type,
         mime_type=mime_type,
@@ -363,6 +381,13 @@ def update_asset(asset_id: UUID, body: AssetUpdate, db: Session = Depends(get_db
 
     previous_status = asset.processing_status
     should_refresh_index = False
+    if body.original_filename is not None:
+        previous_filename = asset.original_filename
+        next_filename = _editable_filename(body.original_filename)
+        asset.original_filename = next_filename
+        if asset.display_title in {None, previous_filename}:
+            asset.display_title = next_filename
+        should_refresh_index = True
     if body.display_title is not None:
         asset.display_title = body.display_title
         should_refresh_index = True

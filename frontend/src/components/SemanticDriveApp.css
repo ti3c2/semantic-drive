@@ -548,9 +548,83 @@
   font-size: 22px;
 }
 
-.sd-drawer h2 {
+.sd-filename-heading {
   margin: 0 40px 6px 0;
   letter-spacing: -0.03em;
+}
+
+.sd-filename-title {
+  max-width: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #181817;
+  cursor: text;
+  font: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.sd-filename-title:hover {
+  color: #4d4740;
+}
+
+.sd-filename-title:focus-visible {
+  outline: 2px solid #27241f;
+  outline-offset: 4px;
+}
+
+.sd-filename-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38px 38px;
+  align-items: center;
+  gap: 8px;
+  margin: 0 40px 8px 0;
+}
+
+.sd-filename-editor input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #ded8ce;
+  border-radius: 14px;
+  padding: 9px 11px;
+  background: #fff;
+  color: #181817;
+  font: inherit;
+  font-weight: 750;
+}
+
+.sd-filename-editor button {
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 12px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sd-filename-editor button svg {
+  display: block;
+}
+
+.sd-filename-save {
+  background: #e6f3ec;
+  color: #195f3f;
+}
+
+.sd-filename-cancel {
+  background: #f8e7e3;
+  color: #862419;
+}
+
+.sd-filename-editor button:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
 }
 
 .sd-detail-meta {
