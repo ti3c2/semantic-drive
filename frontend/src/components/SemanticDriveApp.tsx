@@ -575,7 +575,7 @@ export default function SemanticDriveApp() {
 
   async function saveDetailMetadata(event: FormEvent) {
     event.preventDefault();
-    if (!detail || savingDetail) return;
+    if (!detail || savingDetail || !detailHasChanges) return;
     const assetId = detail.id;
     const previousStatus = detail.processing_status;
     setSavingDetail(true);
@@ -622,6 +622,12 @@ export default function SemanticDriveApp() {
     } finally {
       setSavingDetail(false);
     }
+  }
+
+  function cancelMetadataEdit() {
+    if (!detail || savingDetail) return;
+    setDetailDescriptionDraft(detail.description ?? '');
+    setDetailTagsDraft(detail.tags.map((tag) => tag.name).join(', '));
   }
 
   async function deleteExtraction(extractionType: string) {
@@ -950,6 +956,7 @@ export default function SemanticDriveApp() {
           onSaveFilename={saveFilename}
           onCancelFilenameEdit={cancelFilenameEdit}
           onSaveMetadata={saveDetailMetadata}
+          onCancelMetadataEdit={cancelMetadataEdit}
           onDescriptionChange={setDetailDescriptionDraft}
           onTagsChange={setDetailTagsDraft}
           onCopyRawUrl={copyRawUrlSafely}

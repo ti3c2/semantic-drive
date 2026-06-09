@@ -27,6 +27,7 @@ type DetailDrawerProps = {
   onSaveFilename: () => void;
   onCancelFilenameEdit: () => void;
   onSaveMetadata: (event: FormEvent) => void;
+  onCancelMetadataEdit: () => void;
   onDescriptionChange: (value: string) => void;
   onTagsChange: (value: string) => void;
   onCopyRawUrl: (path: string) => void;
@@ -56,6 +57,7 @@ export function DetailDrawer({
   onSaveFilename,
   onCancelFilenameEdit,
   onSaveMetadata,
+  onCancelMetadataEdit,
   onDescriptionChange,
   onTagsChange,
   onCopyRawUrl,
@@ -159,12 +161,29 @@ export function DetailDrawer({
             placeholder="research, invoice, client-a"
           />
         </label>
-        <div className="sd-detail-edit-actions">
-          <button type="submit" disabled={!detailHasChanges || savingDetail}>
-            {savingDetail && <InlineSpinner />}
-            {savingDetail ? 'Updating search...' : 'Save metadata'}
-          </button>
-        </div>
+        {detailHasChanges && (
+          <div className="sd-detail-edit-actions">
+            <button
+              type="submit"
+              className="sd-detail-save"
+              aria-label={savingDetail ? 'Saving metadata' : 'Save metadata'}
+              title={savingDetail ? 'Saving metadata' : 'Save metadata'}
+              disabled={savingDetail}
+            >
+              {savingDetail ? <InlineSpinner /> : <CheckIcon />}
+            </button>
+            <button
+              type="button"
+              className="sd-detail-cancel"
+              aria-label="Cancel metadata edit"
+              title="Cancel metadata edit"
+              onClick={onCancelMetadataEdit}
+              disabled={savingDetail}
+            >
+              <XIcon />
+            </button>
+          </div>
+        )}
       </form>
       <div className="sd-drawer-actions">
         <button

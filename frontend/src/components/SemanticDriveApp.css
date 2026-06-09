@@ -662,12 +662,29 @@
 
 .sd-detail-edit-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
+  gap: 8px;
 }
 
 .sd-detail-edit-actions button {
-  gap: 8px;
-  font-size: 13px;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  padding: 0;
+}
+
+.sd-detail-edit-actions button svg {
+  display: block;
+}
+
+.sd-detail-edit-actions .sd-detail-save {
+  background: #e6f3ec;
+  color: #195f3f;
+}
+
+.sd-detail-edit-actions .sd-detail-cancel {
+  background: #f8e7e3;
+  color: #862419;
 }
 
 .sd-drawer-actions {
