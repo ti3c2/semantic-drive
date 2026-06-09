@@ -291,6 +291,42 @@ def test_empty_trash_purges_all_trashed_asset_storage_and_rows(monkeypatch) -> N
     assert db.commits == 1
 
 
+def test_thumbnail_stream_allows_trashed_asset_preview(monkeypatch) -> None:
+    asset = make_asset()
+    asset.trashed_at = datetime.now(timezone.utc)
+    asset.thumbnail_key = "owners/demo/assets/scan-thumb.jpg"
+    db = FakeFilteredRouteDb(asset)
+    streamed_objects = []
+
+    monkeypatch.setattr(
+        assets,
+        "get_object_stream",
+        lambda object_name: streamed_objects.append(object_name) or FakeObjectResponse(),
+    )
+
+    response = assets.get_thumbnail(asset.id, db)
+
+    assert response.media_type == "image/jpeg"
+    assert streamed_objects == [asset.thumbnail_key]
+
+
+def test_raw_stream_still_rejects_trashed_assets(monkeypatch) -> None:
+    asset = make_asset()
+    asset.trashed_at = datetime.now(timezone.utc)
+    db = FakeFilteredRouteDb(asset)
+
+    monkeypatch.setattr(
+        assets,
+        "get_object_stream",
+        lambda _object_name: pytest.fail("raw object should not stream for trashed assets"),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        assets.get_raw_asset(asset.id, db)
+
+    assert exc_info.value.status_code == 404
+
+
 def test_reindex_asset_search_rebuilds_chunks_and_publishes_progress(monkeypatch) -> None:
     asset = make_asset()
     asset.extractions = [
@@ -356,6 +392,13 @@ class FakeRouteDb:
         self.commits += 1
 
 
+class FakeFilteredRouteDb(FakeRouteDb):
+    def scalar(self, stmt):
+        if self.asset.trashed_at is not None and "assets.trashed_at IS NULL" in str(stmt):
+            return None
+        return self.asset
+
+
 class FakeTrashDb:
     def __init__(self, assets: list[Asset]) -> None:
         self.assets = assets
@@ -411,6 +454,17 @@ class FakeUploadFile:
         self.filename = filename
         self.content_type = content_type
         self.file = BytesIO(content)
+
+
+class FakeObjectResponse:
+    def stream(self, _chunk_size: int):
+        yield b"test"
+
+    def close(self) -> None:
+        pass
+
+    def release_conn(self) -> None:
+        pass
 
 
 class FakeIndexDb:

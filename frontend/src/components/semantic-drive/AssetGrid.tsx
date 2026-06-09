@@ -43,7 +43,9 @@ export function AssetGrid({
   return (
     <section className="sd-grid">
       {items.map((item) => {
-        const previewImageUrl = assetPreviewImageUrl(item);
+        const previewImageUrl = assetPreviewImageUrl(item, {
+          allowRawImageFallback: !isTrashView,
+        });
         const canOpenPreview = !isTrashView && isMediaPreviewable(item);
         const isSelected = !isTrashView && item.id === selectedAssetId;
         return (

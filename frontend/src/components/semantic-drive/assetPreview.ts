@@ -2,9 +2,16 @@ import type { DisplayItem } from './types';
 
 type PreviewableAsset = Pick<DisplayItem, 'media_type' | 'thumbnail_url' | 'raw_url'>;
 
-export function assetPreviewImageUrl(asset: PreviewableAsset) {
+type AssetPreviewImageOptions = {
+  allowRawImageFallback?: boolean;
+};
+
+export function assetPreviewImageUrl(
+  asset: PreviewableAsset,
+  options: AssetPreviewImageOptions = {},
+) {
   if (asset.thumbnail_url) return asset.thumbnail_url;
-  if (asset.media_type === 'image') return asset.raw_url;
+  if ((options.allowRawImageFallback ?? true) && asset.media_type === 'image') return asset.raw_url;
   return null;
 }
 

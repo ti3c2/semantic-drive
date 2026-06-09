@@ -28,6 +28,20 @@ test('assetPreviewImageUrl uses raw image while thumbnail is still processing', 
   );
 });
 
+test('assetPreviewImageUrl can disable raw image fallback', () => {
+  assert.equal(
+    assetPreviewImageUrl(
+      {
+        media_type: 'image',
+        thumbnail_url: null,
+        raw_url: '/api/assets/asset-id/raw',
+      },
+      { allowRawImageFallback: false },
+    ),
+    null,
+  );
+});
+
 test('assetPreviewImageUrl keeps non-image assets on placeholders until thumbnails exist', () => {
   assert.equal(
     assetPreviewImageUrl({

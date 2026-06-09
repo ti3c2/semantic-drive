@@ -559,7 +559,6 @@ def get_thumbnail(asset_id: UUID, db: Session = Depends(get_db)) -> StreamingRes
         select(Asset).where(
             Asset.id == asset_id,
             Asset.owner_id == settings.demo_owner_id,
-            Asset.trashed_at.is_(None),
         )
     )
     if not asset or not asset.thumbnail_key:
