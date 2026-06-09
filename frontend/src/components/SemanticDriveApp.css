@@ -306,7 +306,7 @@
 .sd-result-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
   margin: 10px 2px 18px;
 }
@@ -317,23 +317,25 @@
 }
 
 .sd-empty-trash-button {
-  min-height: 34px;
-  border: 0;
+  min-height: 38px;
+  border: 1px solid #cbc4b8;
   border-radius: 14px;
-  padding: 8px 12px;
-  background: #f8e7e3;
-  color: #862419;
+  padding: 9px 14px;
+  background: #e8e2d8;
+  color: #181817;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 700;
   line-height: 1.15;
+  box-shadow: 0 6px 18px rgba(39, 36, 31, 0.08);
 }
 
 .sd-empty-trash-button:hover {
-  background: #f3d5ce;
+  background: #ded6ca;
+  border-color: #b8afa1;
 }
 
 .sd-empty-trash-button:disabled {

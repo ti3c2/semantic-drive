@@ -904,45 +904,46 @@ export default function SemanticDriveApp() {
       />
 
       <section className="sd-main">
-        <header className="sd-header">
-          <div className="sd-search-stack">
-            <form onSubmit={runSearch} className="sd-search">
-              <input
-                ref={searchInputRef}
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                onBlur={handleSearchBlur}
-                onFocus={handleSearchFocus}
-                placeholder={isTrashView ? 'Trash' : 'Search text, speech, screenshots, tags...'}
-                disabled={isTrashView}
-                autoFocus
+        {!isTrashView && (
+          <header className="sd-header">
+            <div className="sd-search-stack">
+              <form onSubmit={runSearch} className="sd-search">
+                <input
+                  ref={searchInputRef}
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  onBlur={handleSearchBlur}
+                  onFocus={handleSearchFocus}
+                  placeholder="Search text, speech, screenshots, tags..."
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  className="sd-search-clear"
+                  aria-label="Clear search"
+                  disabled={query.length === 0}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={clearSearch}
+                >
+                  &times;
+                </button>
+              </form>
+              <MediaFilterBar
+                activeMediaTypes={activeMediaTypes}
+                onToggleMediaType={toggleMediaTypeFilter}
+                onClearFilters={clearMediaFilters}
               />
-              <button
-                type="button"
-                className="sd-search-clear"
-                aria-label="Clear search"
-                disabled={query.length === 0 || isTrashView}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={clearSearch}
-              >
-                &times;
-              </button>
-            </form>
-            <MediaFilterBar
-              activeMediaTypes={activeMediaTypes}
-              onToggleMediaType={toggleMediaTypeFilter}
-              onClearFilters={clearMediaFilters}
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              hidden
+              accept="image/*,audio/*,video/*"
+              onChange={(event) => addPendingFiles(Array.from(event.target.files || []))}
             />
-          </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            hidden
-            accept="image/*,audio/*,video/*"
-            onChange={(event) => addPendingFiles(Array.from(event.target.files || []))}
-          />
-        </header>
+          </header>
+        )}
 
         {!isTrashView && (
           <FileDropzone
@@ -958,14 +959,6 @@ export default function SemanticDriveApp() {
         {error && <div className="sd-error">{error}</div>}
 
         <div className="sd-result-toolbar">
-          <div className="sd-result-count">
-            {isTrashView
-              ? `${displayed.length} trashed file${displayed.length === 1 ? '' : 's'}`
-              : query.trim()
-                ? `${displayed.length} semantic result${displayed.length === 1 ? '' : 's'}`
-                : `${displayed.length} file${displayed.length === 1 ? '' : 's'}`}
-            {searching && <span> searching...</span>}
-          </div>
           {isTrashView && (
             <button
               type="button"
@@ -981,6 +974,14 @@ export default function SemanticDriveApp() {
               {emptyingTrash ? 'Emptying...' : 'Empty trash'}
             </button>
           )}
+          <div className="sd-result-count">
+            {isTrashView
+              ? `${displayed.length} trashed file${displayed.length === 1 ? '' : 's'}`
+              : query.trim()
+                ? `${displayed.length} semantic result${displayed.length === 1 ? '' : 's'}`
+                : `${displayed.length} file${displayed.length === 1 ? '' : 's'}`}
+            {searching && <span> searching...</span>}
+          </div>
         </div>
 
         <AssetGrid
