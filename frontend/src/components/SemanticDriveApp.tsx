@@ -4,9 +4,11 @@ import './SemanticDriveApp.css';
 import { ActionToast } from './semantic-drive/ActionToast';
 import { api } from './semantic-drive/api';
 import { AssetGrid } from './semantic-drive/AssetGrid';
+import { isMediaPreviewable } from './semantic-drive/assetPreview';
 import { copyImageUrlToClipboard, copyTextToClipboard } from './semantic-drive/clipboard';
 import { DetailDrawer } from './semantic-drive/DetailDrawer';
 import { FileDropzone } from './semantic-drive/FileDropzone';
+import { FullscreenPreview } from './semantic-drive/FullscreenPreview';
 import {
   MEDIA_TYPE_FILTERS,
   MediaFilterBar,
@@ -27,6 +29,7 @@ import { uploadAssetBatch } from './semantic-drive/uploadQueue';
 import {
   assetToDisplay,
   fileKey,
+  getCycledAssetId,
   isLiveStatus,
   parseTagNames,
   resultToDisplay,
@@ -38,6 +41,11 @@ type AssetProcessingUpdatePayload = {
   status?: string;
   step?: string;
 };
+
+function isEditableKeyTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
+}
 
 export default function SemanticDriveApp() {
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -53,6 +61,7 @@ export default function SemanticDriveApp() {
   const [emptyingTrash, setEmptyingTrash] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [previewAssetId, setPreviewAssetId] = useState<string | null>(null);
   const [detail, setDetail] = useState<AssetDetail | null>(null);
   const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
   const [activeMediaTypes, setActiveMediaTypes] = useState<MediaTypeFilter[]>(() => [
@@ -192,7 +201,7 @@ export default function SemanticDriveApp() {
   }, []);
 
   useEffect(() => {
-    if (!detail) return;
+    if (!detail || previewAssetId) return;
 
     const closeOnOutsidePointerDown = (event: PointerEvent) => {
       const drawer = detailDrawerRef.current;
@@ -203,7 +212,7 @@ export default function SemanticDriveApp() {
 
     document.addEventListener('pointerdown', closeOnOutsidePointerDown);
     return () => document.removeEventListener('pointerdown', closeOnOutsidePointerDown);
-  }, [closeDetailDrawer, detail]);
+  }, [closeDetailDrawer, detail, previewAssetId]);
 
   useEffect(() => {
     const source = new EventSource(api('/api/events'));
@@ -250,17 +259,30 @@ export default function SemanticDriveApp() {
       setDetail(null);
       return;
     }
+    if (detail?.id === selectedId) {
+      return;
+    }
     let cancelled = false;
-    setDetail(null);
+    const previousDetailId = detail?.id ?? null;
     fetchAssetDetail(selectedId)
       .then((nextDetail) => {
-        if (!cancelled) setDetail(nextDetail);
+        if (cancelled) return;
+        setDetail(nextDetail);
+        setError(null);
       })
-      .catch((err) => setError(err.message));
+      .catch((err) => {
+        if (cancelled) return;
+        setError(err.message);
+        if (previousDetailId) {
+          setSelectedId((current) => (current === selectedId ? previousDetailId : current));
+        } else {
+          setSelectedId((current) => (current === selectedId ? null : current));
+        }
+      });
     return () => {
       cancelled = true;
     };
-  }, [fetchAssetDetail, selectedId]);
+  }, [detail?.id, fetchAssetDetail, selectedId]);
 
   useEffect(() => {
     if (!detail) {
@@ -297,6 +319,44 @@ export default function SemanticDriveApp() {
     return source.filter((item) => activeMediaTypeSet.has(item.media_type));
   }, [activeMediaTypes, assets, isTrashView, query, results, trashAssets]);
 
+  const drawerItems = useMemo(() => {
+    if (!detail || displayed.some((item) => item.id === detail.id)) return displayed;
+    return [assetToDisplay(detail), ...displayed];
+  }, [detail, displayed]);
+
+  const previewItems = useMemo(() => drawerItems.filter(isMediaPreviewable), [drawerItems]);
+
+  const previewAsset = useMemo(() => {
+    if (!previewAssetId) return null;
+    return previewItems.find((item) => item.id === previewAssetId) ?? null;
+  }, [previewAssetId, previewItems]);
+
+  const canCycleDrawerAssets = drawerItems.length > 1;
+  const canCyclePreviewAssets = previewItems.length > 1;
+  const isDetailPending = Boolean(detail && selectedId && detail.id !== selectedId);
+
+  const openFullscreenPreview = useCallback((assetId: string) => {
+    setPreviewAssetId(assetId);
+  }, []);
+
+  const cyclePreviewAsset = useCallback(
+    (direction: -1 | 1) => {
+      setPreviewAssetId((currentId) => getCycledAssetId(previewItems, currentId, direction));
+    },
+    [previewItems],
+  );
+
+  const cycleDetailAsset = useCallback(
+    (direction: -1 | 1) => {
+      const nextId = getCycledAssetId(drawerItems, selectedIdRef.current, direction);
+      if (!nextId) return;
+      setSelectedId(nextId);
+      setSharePayload(null);
+      setIsEditingFilename(false);
+    },
+    [drawerItems],
+  );
+
   const detailTagNames = useMemo(() => parseTagNames(detailTagsDraft), [detailTagsDraft]);
   const detailHasChanges = useMemo(() => {
     if (!detail) return false;
@@ -328,6 +388,62 @@ export default function SemanticDriveApp() {
     }, 4000);
     return () => window.clearInterval(timer);
   }, [fetchAssetDetail, hasLiveWork, loadAssets]);
+
+  useEffect(() => {
+    if (previewAssetId && !previewAsset) setPreviewAssetId(null);
+  }, [previewAsset, previewAssetId]);
+
+  useEffect(() => {
+    if (!previewAssetId) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [previewAssetId]);
+
+  useEffect(() => {
+    if (!previewAsset) return;
+
+    const handlePreviewKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setPreviewAssetId(null);
+        return;
+      }
+      if (!canCyclePreviewAssets) return;
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        cyclePreviewAsset(-1);
+      }
+      if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        cyclePreviewAsset(1);
+      }
+    };
+
+    document.addEventListener('keydown', handlePreviewKeyDown);
+    return () => document.removeEventListener('keydown', handlePreviewKeyDown);
+  }, [canCyclePreviewAssets, cyclePreviewAsset, previewAsset]);
+
+  useEffect(() => {
+    if (!detail || previewAssetId || !canCycleDrawerAssets) return;
+
+    const handleDrawerKeyDown = (event: KeyboardEvent) => {
+      if (isEditableKeyTarget(event.target)) return;
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        cycleDetailAsset(-1);
+      }
+      if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        cycleDetailAsset(1);
+      }
+    };
+
+    document.addEventListener('keydown', handleDrawerKeyDown);
+    return () => document.removeEventListener('keydown', handleDrawerKeyDown);
+  }, [canCycleDrawerAssets, cycleDetailAsset, detail, previewAssetId]);
 
   function openFilePicker() {
     fileInputRef.current?.click();
@@ -731,6 +847,7 @@ export default function SemanticDriveApp() {
         throw new Error(payload.detail || 'Could not move file to trash');
       }
       setResults((current) => current.filter((result) => result.asset_id !== assetId));
+      setPreviewAssetId((current) => (current === assetId ? null : current));
       if (selectedIdRef.current === assetId) {
         setSelectedId(null);
         setDetail(null);
@@ -888,6 +1005,7 @@ export default function SemanticDriveApp() {
     setQuery('');
     setResults([]);
     setSelectedId(null);
+    setPreviewAssetId(null);
     setDetail(null);
     setSharePayload(null);
   }
@@ -987,6 +1105,7 @@ export default function SemanticDriveApp() {
         <AssetGrid
           items={displayed}
           isTrashView={isTrashView}
+          selectedAssetId={selectedId}
           restoringIds={restoringIds}
           purgingIds={purgingIds}
           trashingIds={trashingIds}
@@ -998,6 +1117,7 @@ export default function SemanticDriveApp() {
           onRestoreAsset={restoreAsset}
           onPurgeAsset={purgeAsset}
           onRetryProcessing={retryProcessing}
+          onOpenPreview={openFullscreenPreview}
         />
       </section>
 
@@ -1016,7 +1136,12 @@ export default function SemanticDriveApp() {
           deletingExtractions={deletingExtractions}
           trashingIds={trashingIds}
           retryingIds={retryingIds}
+          canCycleAssets={canCycleDrawerAssets}
+          isPending={isDetailPending}
           onClose={closeDetailDrawer}
+          onOpenPreview={openFullscreenPreview}
+          onPreviousAsset={() => cycleDetailAsset(-1)}
+          onNextAsset={() => cycleDetailAsset(1)}
           onStartFilenameEdit={startFilenameEdit}
           onFilenameChange={setFilenameDraft}
           onSaveFilename={saveFilename}
@@ -1030,6 +1155,16 @@ export default function SemanticDriveApp() {
           onMoveToTrash={moveAssetToTrash}
           onRetryProcessing={retryProcessing}
           onDeleteExtraction={deleteExtraction}
+        />
+      )}
+
+      {previewAsset && (
+        <FullscreenPreview
+          item={previewAsset}
+          canCycle={canCyclePreviewAssets}
+          onClose={() => setPreviewAssetId(null)}
+          onPrevious={() => cyclePreviewAsset(-1)}
+          onNext={() => cyclePreviewAsset(1)}
         />
       )}
 

@@ -1,13 +1,14 @@
 import type { DisplayItem } from './types';
 import { api } from './api';
-import { assetPreviewImageUrl } from './assetPreview';
-import { CopyIcon, DownloadIcon, ShareIcon, TrashIcon } from './icons';
+import { assetPreviewImageUrl, isMediaPreviewable } from './assetPreview';
+import { CopyIcon, DownloadIcon, ExpandIcon, ShareIcon, TrashIcon } from './icons';
 import { IconOnlyAction, MediaTypeIcon, mediaTypeLabel } from './media';
 import { StatusIndicator } from './StatusIndicator';
 
 type AssetGridProps = {
   items: DisplayItem[];
   isTrashView: boolean;
+  selectedAssetId: string | null;
   restoringIds: ReadonlySet<string>;
   purgingIds: ReadonlySet<string>;
   trashingIds: ReadonlySet<string>;
@@ -19,11 +20,13 @@ type AssetGridProps = {
   onRestoreAsset: (assetId: string) => void;
   onPurgeAsset: (assetId: string) => void;
   onRetryProcessing: (assetId: string) => void;
+  onOpenPreview: (assetId: string) => void;
 };
 
 export function AssetGrid({
   items,
   isTrashView,
+  selectedAssetId,
   restoringIds,
   purgingIds,
   trashingIds,
@@ -35,20 +38,24 @@ export function AssetGrid({
   onRestoreAsset,
   onPurgeAsset,
   onRetryProcessing,
+  onOpenPreview,
 }: AssetGridProps) {
   return (
     <section className="sd-grid">
       {items.map((item) => {
         const previewImageUrl = assetPreviewImageUrl(item);
+        const canOpenPreview = !isTrashView && isMediaPreviewable(item);
+        const isSelected = !isTrashView && item.id === selectedAssetId;
         return (
           <article
             key={item.id}
-            className={`sd-card${isTrashView ? ' sd-card-muted' : ''}`}
+            className={`sd-card${isTrashView ? ' sd-card-muted' : ''}${isSelected ? ' sd-card-selected' : ''}`}
+            aria-current={isSelected ? 'true' : undefined}
             onClick={() => {
               if (!isTrashView) onSelectAsset(item.id);
             }}
           >
-            <div className="sd-thumb">
+            <div className={`sd-thumb${canOpenPreview ? ' sd-thumb-previewable' : ''}`}>
               {previewImageUrl ? (
                 <img
                   src={api(previewImageUrl)}
@@ -61,6 +68,19 @@ export function AssetGrid({
                   <MediaTypeIcon mediaType={item.media_type} size={42} />
                   <span className="sd-sr-only">{mediaTypeLabel(item.media_type)}</span>
                 </div>
+              )}
+              {canOpenPreview && (
+                <button
+                  type="button"
+                  className="sd-thumb-expand"
+                  aria-label={`Open ${item.title} preview`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onOpenPreview(item.id);
+                  }}
+                >
+                  <ExpandIcon size={18} />
+                </button>
               )}
               <StatusIndicator status={item.status} />
             </div>

@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { assetPreviewImageUrl } from '../src/components/semantic-drive/assetPreview.ts';
+import {
+  assetPreviewImageUrl,
+  isMediaPreviewable,
+} from '../src/components/semantic-drive/assetPreview.ts';
 
 test('assetPreviewImageUrl prefers generated thumbnails', () => {
   assert.equal(
@@ -34,4 +37,11 @@ test('assetPreviewImageUrl keeps non-image assets on placeholders until thumbnai
     }),
     null,
   );
+});
+
+test('isMediaPreviewable accepts image, video, and audio assets', () => {
+  assert.equal(isMediaPreviewable({ media_type: 'image' }), true);
+  assert.equal(isMediaPreviewable({ media_type: 'video' }), true);
+  assert.equal(isMediaPreviewable({ media_type: 'audio' }), true);
+  assert.equal(isMediaPreviewable({ media_type: 'document' }), false);
 });

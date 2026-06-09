@@ -1,9 +1,19 @@
 import type { FormEvent, KeyboardEvent, RefObject } from 'react';
 import type { AssetDetail, SharePayload } from './types';
 import { api } from './api';
+import { isMediaPreviewable } from './assetPreview';
 import { Extraction } from './Extraction';
-import { CheckIcon, CopyIcon, DownloadIcon, ShareIcon, TrashIcon, XIcon } from './icons';
-import { IconOnlyAction } from './media';
+import {
+  CheckIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CopyIcon,
+  DownloadIcon,
+  ShareIcon,
+  TrashIcon,
+  XIcon,
+} from './icons';
+import { IconOnlyAction, MediaTypeIcon } from './media';
 import { InlineSpinner } from './StatusIndicator';
 import { formatBytes } from './utils';
 
@@ -21,7 +31,12 @@ type DetailDrawerProps = {
   deletingExtractions: ReadonlySet<string>;
   trashingIds: ReadonlySet<string>;
   retryingIds: ReadonlySet<string>;
+  canCycleAssets: boolean;
+  isPending: boolean;
   onClose: () => void;
+  onOpenPreview: (assetId: string) => void;
+  onPreviousAsset: () => void;
+  onNextAsset: () => void;
   onStartFilenameEdit: () => void;
   onFilenameChange: (value: string) => void;
   onSaveFilename: () => void;
@@ -51,7 +66,12 @@ export function DetailDrawer({
   deletingExtractions,
   trashingIds,
   retryingIds,
+  canCycleAssets,
+  isPending,
   onClose,
+  onOpenPreview,
+  onPreviousAsset,
+  onNextAsset,
   onStartFilenameEdit,
   onFilenameChange,
   onSaveFilename,
@@ -77,8 +97,15 @@ export function DetailDrawer({
     }
   }
 
+  const canOpenPreview = isMediaPreviewable(detail);
+  const previewTitle = detail.display_title || detail.original_filename;
+
   return (
-    <aside className="sd-drawer" ref={drawerRef}>
+    <aside
+      className={`sd-drawer${isPending ? ' sd-drawer-pending' : ''}`}
+      ref={drawerRef}
+      aria-busy={isPending ? 'true' : undefined}
+    >
       <button type="button" className="sd-close" onClick={onClose}>
         &times;
       </button>
@@ -130,18 +157,43 @@ export function DetailDrawer({
         {detail.mime_type} &middot; {formatBytes(detail.file_size_bytes)} &middot;{' '}
         {detail.processing_status}
       </div>
-      <div className="sd-preview">
-        {detail.media_type === 'image' && (
-          <img src={api(detail.raw_url)} alt={detail.display_title || detail.original_filename} />
+      <div className={`sd-preview${canOpenPreview ? ' sd-preview-clickable' : ''}`}>
+        {canOpenPreview ? (
+          <button
+            type="button"
+            className="sd-preview-open"
+            aria-label={`Open ${previewTitle} preview`}
+            onClick={() => onOpenPreview(detail.id)}
+          >
+            {detail.media_type === 'image' && <img src={api(detail.raw_url)} alt={previewTitle} />}
+            {detail.media_type === 'video' && (
+              <video
+                src={api(detail.raw_url)}
+                poster={detail.thumbnail_url ? api(detail.thumbnail_url) : undefined}
+                muted
+                playsInline
+                preload="metadata"
+              />
+            )}
+            {detail.media_type === 'audio' && (
+              <div className="sd-audio-preview" aria-hidden="true">
+                <MediaTypeIcon mediaType={detail.media_type} size={42} />
+              </div>
+            )}
+          </button>
+        ) : (
+          <>
+            {detail.media_type === 'image' && <img src={api(detail.raw_url)} alt={previewTitle} />}
+            {detail.media_type === 'video' && (
+              <video
+                src={api(detail.raw_url)}
+                poster={detail.thumbnail_url ? api(detail.thumbnail_url) : undefined}
+                controls
+              />
+            )}
+            {detail.media_type === 'audio' && <audio src={api(detail.raw_url)} controls />}
+          </>
         )}
-        {detail.media_type === 'video' && (
-          <video
-            src={api(detail.raw_url)}
-            poster={detail.thumbnail_url ? api(detail.thumbnail_url) : undefined}
-            controls
-          />
-        )}
-        {detail.media_type === 'audio' && <audio src={api(detail.raw_url)} controls />}
       </div>
       <form className="sd-detail-edit" onSubmit={onSaveMetadata}>
         <label className="sd-field">
@@ -262,6 +314,18 @@ export function DetailDrawer({
         deleting={deletingExtractions.has('transcript')}
         onDelete={() => onDeleteExtraction('transcript')}
       />
+      {canCycleAssets && (
+        <div className="sd-drawer-cycle" aria-label="Asset navigation">
+          <div className="sd-drawer-cycle-controls">
+            <button type="button" aria-label="Previous asset" onClick={onPreviousAsset}>
+              <ChevronLeftIcon />
+            </button>
+            <button type="button" aria-label="Next asset" onClick={onNextAsset}>
+              <ChevronRightIcon />
+            </button>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }

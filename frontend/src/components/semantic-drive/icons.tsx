@@ -133,6 +133,72 @@ export function AudioIcon({ size = 18 }: { size?: number }) {
   );
 }
 
+export function ExpandIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M15 3h6v6" />
+      <path d="m14 10 7-7" />
+      <path d="M9 21H3v-6" />
+      <path d="m10 14-7 7" />
+    </svg>
+  );
+}
+
+export function ChevronLeftIcon({
+  size = 18,
+  strokeWidth = 2.2,
+}: {
+  size?: number;
+  strokeWidth?: number;
+}) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m15 18-6-6 6-6" />
+    </svg>
+  );
+}
+
+export function ChevronRightIcon({
+  size = 18,
+  strokeWidth = 2.2,
+}: {
+  size?: number;
+  strokeWidth?: number;
+}) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m9 18 6-6-6-6" />
+    </svg>
+  );
+}
+
 export function XIcon({ size = 18 }: { size?: number }) {
   return (
     <svg

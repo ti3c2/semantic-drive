@@ -7,3 +7,9 @@ export function assetPreviewImageUrl(asset: PreviewableAsset) {
   if (asset.media_type === 'image') return asset.raw_url;
   return null;
 }
+
+export function isMediaPreviewable(asset: Pick<DisplayItem, 'media_type'>) {
+  return (
+    asset.media_type === 'image' || asset.media_type === 'video' || asset.media_type === 'audio'
+  );
+}

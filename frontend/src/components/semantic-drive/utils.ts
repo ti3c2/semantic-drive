@@ -67,6 +67,19 @@ export function parseTagNames(raw: string) {
     });
 }
 
+export function getCycledAssetId<T extends { id: string }>(
+  items: T[],
+  currentId: string | null,
+  direction: -1 | 1,
+) {
+  if (!items.length) return null;
+
+  const currentIndex = currentId ? items.findIndex((item) => item.id === currentId) : -1;
+  const startingIndex = currentIndex >= 0 ? currentIndex : direction > 0 ? -1 : 0;
+  const nextIndex = (startingIndex + direction + items.length) % items.length;
+  return items[nextIndex]?.id ?? null;
+}
+
 export function isImageFile(file: File) {
   return file.type.startsWith('image/') || /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(file.name);
 }
