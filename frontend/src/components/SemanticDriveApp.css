@@ -578,6 +578,11 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  min-height: 25px;
+}
+
+.sd-tags-empty {
+  pointer-events: none;
 }
 
 .sd-tags span {

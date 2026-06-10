@@ -139,13 +139,14 @@ export function AssetGrid({
                   {item.match.type}: {item.match.text}
                 </p>
               )}
-              {!!item.tags.length && (
-                <div className="sd-tags">
-                  {item.tags.slice(0, 4).map((tag) => (
-                    <span key={tag}>#{tag}</span>
-                  ))}
-                </div>
-              )}
+              <div
+                className={`sd-tags${item.tags.length ? '' : ' sd-tags-empty'}`}
+                aria-hidden={item.tags.length ? undefined : 'true'}
+              >
+                {item.tags.slice(0, 4).map((tag) => (
+                  <span key={tag}>#{tag}</span>
+                ))}
+              </div>
             </div>
             <div className="sd-actions" onClick={(event) => event.stopPropagation()}>
               {isTrashView ? (
