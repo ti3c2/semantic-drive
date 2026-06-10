@@ -207,6 +207,8 @@ export default function SemanticDriveApp() {
       const drawer = detailDrawerRef.current;
       const target = event.target;
       if (!drawer || !(target instanceof Node) || drawer.contains(target)) return;
+      const targetElement = target instanceof Element ? target : target.parentElement;
+      if (targetElement?.closest('.sd-card')) return;
       closeDetailDrawer();
     };
 
