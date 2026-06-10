@@ -9,3 +9,4 @@ dist
 *.pyc
 *.log
 semantic-drive.zip
+infra/caddy/local-root.crt

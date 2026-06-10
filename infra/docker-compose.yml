@@ -1,0 +1,166 @@
+name: semantic-drive
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      - frontend
+      - backend
+    ports:
+      - "${CADDY_HTTP_PORT:-80}:80"
+      - "${CADDY_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - semantic-store-network
+
+  postgres:
+    image: postgres:18.3
+    environment:
+      POSTGRES_USER: semantic
+      POSTGRES_PASSWORD: semantic
+      POSTGRES_DB: semantic_drive
+    ports:
+      - "5442:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U semantic -d semantic_drive"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - semantic-store-network
+
+  redis:
+    image: redis:8-alpine3.23
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - semantic-store-network
+
+  qdrant:
+    image: qdrant/qdrant:v1.18
+    ports:
+      - "6330:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    networks:
+      - semantic-store-network
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-semantic}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-semantic-secret}
+    ports:
+      - "9010:9000"
+      - "9011:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - semantic-store-network
+
+  backend:
+    build:
+      context: ../backend
+    env_file:
+      - ./.env
+    environment:
+      UV_PROJECT_ENVIRONMENT: /tmp/semantic-drive-venv
+      API_BASE_URL: https://semanticdrive.localhost
+      FRONTEND_BASE_URL: https://semanticdrive.localhost
+      ALLOWED_ORIGINS: '["https://semanticdrive.localhost","http://localhost:4321","http://127.0.0.1:4321"]'
+      MINIO_EXTERNAL_ENDPOINT: localhost:9010
+    expose:
+      - "8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      minio:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ../backend:/app
+    networks:
+      - semantic-store-network
+    command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  worker:
+    build:
+      context: ../backend
+    env_file:
+      - ./.env
+    environment:
+      UV_PROJECT_ENVIRONMENT: /tmp/semantic-drive-venv
+      API_BASE_URL: https://semanticdrive.localhost
+      FRONTEND_BASE_URL: https://semanticdrive.localhost
+      ALLOWED_ORIGINS: '["https://semanticdrive.localhost","http://localhost:4321","http://127.0.0.1:4321"]'
+      MINIO_EXTERNAL_ENDPOINT: localhost:9010
+    depends_on:
+      backend:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      minio:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ../backend:/app
+    networks:
+      - semantic-store-network
+    command: uv run python -m app.workers.worker
+
+  frontend:
+    build:
+      context: ../frontend
+    environment:
+      PUBLIC_API_BASE_URL: ""
+    expose:
+      - "4321"
+    depends_on:
+      - backend
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ../frontend:/app
+      - frontend-node-modules:/app/node_modules
+    networks:
+      - semantic-store-network
+    command: npm run dev -- --host 0.0.0.0
+
+volumes:
+  caddy-data:
+  caddy-config:
+  postgres-data:
+  qdrant-data:
+  minio-data:
+  frontend-node-modules:
+
+networks:
+  semantic-store-network:
+    name: semantic-store-network
