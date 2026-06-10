@@ -62,6 +62,7 @@ export default function SemanticDriveApp() {
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [previewAssetId, setPreviewAssetId] = useState<string | null>(null);
+  const [previewReturnToDrawer, setPreviewReturnToDrawer] = useState(false);
   const [detail, setDetail] = useState<AssetDetail | null>(null);
   const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
   const [activeMediaTypes, setActiveMediaTypes] = useState<MediaTypeFilter[]>(() => [
@@ -337,9 +338,22 @@ export default function SemanticDriveApp() {
   const canCyclePreviewAssets = previewItems.length > 1;
   const isDetailPending = Boolean(detail && selectedId && detail.id !== selectedId);
 
-  const openFullscreenPreview = useCallback((assetId: string) => {
+  const openFullscreenPreview = useCallback((assetId: string, returnToDrawer = false) => {
+    setPreviewReturnToDrawer(returnToDrawer);
     setPreviewAssetId(assetId);
   }, []);
+
+  const closeFullscreenPreview = useCallback(() => {
+    setPreviewAssetId((currentId) => {
+      if (previewReturnToDrawer && currentId) {
+        setSelectedId(currentId);
+        setSharePayload(null);
+        setIsEditingFilename(false);
+      }
+      return null;
+    });
+    setPreviewReturnToDrawer(false);
+  }, [previewReturnToDrawer]);
 
   const cyclePreviewAsset = useCallback(
     (direction: -1 | 1) => {
@@ -392,7 +406,9 @@ export default function SemanticDriveApp() {
   }, [fetchAssetDetail, hasLiveWork, loadAssets]);
 
   useEffect(() => {
-    if (previewAssetId && !previewAsset) setPreviewAssetId(null);
+    if (!previewAssetId || previewAsset) return;
+    setPreviewAssetId(null);
+    setPreviewReturnToDrawer(false);
   }, [previewAsset, previewAssetId]);
 
   useEffect(() => {
@@ -410,7 +426,7 @@ export default function SemanticDriveApp() {
     const handlePreviewKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        setPreviewAssetId(null);
+        closeFullscreenPreview();
         return;
       }
       if (!canCyclePreviewAssets) return;
@@ -426,7 +442,7 @@ export default function SemanticDriveApp() {
 
     document.addEventListener('keydown', handlePreviewKeyDown);
     return () => document.removeEventListener('keydown', handlePreviewKeyDown);
-  }, [canCyclePreviewAssets, cyclePreviewAsset, previewAsset]);
+  }, [canCyclePreviewAssets, closeFullscreenPreview, cyclePreviewAsset, previewAsset]);
 
   useEffect(() => {
     if (!detail || previewAssetId || !canCycleDrawerAssets) return;
@@ -850,6 +866,7 @@ export default function SemanticDriveApp() {
       }
       setResults((current) => current.filter((result) => result.asset_id !== assetId));
       setPreviewAssetId((current) => (current === assetId ? null : current));
+      setPreviewReturnToDrawer((current) => (previewAssetId === assetId ? false : current));
       if (selectedIdRef.current === assetId) {
         setSelectedId(null);
         setDetail(null);
@@ -1008,6 +1025,7 @@ export default function SemanticDriveApp() {
     setResults([]);
     setSelectedId(null);
     setPreviewAssetId(null);
+    setPreviewReturnToDrawer(false);
     setDetail(null);
     setSharePayload(null);
   }
@@ -1119,7 +1137,7 @@ export default function SemanticDriveApp() {
           onRestoreAsset={restoreAsset}
           onPurgeAsset={purgeAsset}
           onRetryProcessing={retryProcessing}
-          onOpenPreview={openFullscreenPreview}
+          onOpenPreview={(assetId) => openFullscreenPreview(assetId, false)}
         />
       </section>
 
@@ -1141,7 +1159,7 @@ export default function SemanticDriveApp() {
           canCycleAssets={canCycleDrawerAssets}
           isPending={isDetailPending}
           onClose={closeDetailDrawer}
-          onOpenPreview={openFullscreenPreview}
+          onOpenPreview={(assetId) => openFullscreenPreview(assetId, true)}
           onPreviousAsset={() => cycleDetailAsset(-1)}
           onNextAsset={() => cycleDetailAsset(1)}
           onStartFilenameEdit={startFilenameEdit}
@@ -1164,7 +1182,7 @@ export default function SemanticDriveApp() {
         <FullscreenPreview
           item={previewAsset}
           canCycle={canCyclePreviewAssets}
-          onClose={() => setPreviewAssetId(null)}
+          onClose={closeFullscreenPreview}
           onPrevious={() => cyclePreviewAsset(-1)}
           onNext={() => cyclePreviewAsset(1)}
         />

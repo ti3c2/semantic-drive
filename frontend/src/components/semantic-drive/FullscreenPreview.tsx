@@ -23,7 +23,11 @@ export function FullscreenPreview({
   const posterUrl = item.thumbnail_url ? api(item.thumbnail_url) : undefined;
 
   function handleBackdropPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
-    if (event.target === event.currentTarget) onClose();
+    event.stopPropagation();
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (target.closest('button, .sd-fullscreen-media')) return;
+    onClose();
   }
 
   return (
@@ -65,10 +69,14 @@ export function FullscreenPreview({
       )}
 
       <figure className={`sd-fullscreen-stage sd-fullscreen-stage-${item.media_type}`}>
-        {item.media_type === 'image' && <img src={rawUrl} alt={title} />}
-        {item.media_type === 'video' && <video src={rawUrl} poster={posterUrl} controls />}
+        {item.media_type === 'image' && (
+          <img className="sd-fullscreen-media" src={rawUrl} alt={title} />
+        )}
+        {item.media_type === 'video' && (
+          <video className="sd-fullscreen-media" src={rawUrl} poster={posterUrl} controls />
+        )}
         {item.media_type === 'audio' && (
-          <div className="sd-fullscreen-audio-card">
+          <div className="sd-fullscreen-media sd-fullscreen-audio-card">
             <AudioIcon size={58} />
             <audio src={rawUrl} controls />
           </div>
