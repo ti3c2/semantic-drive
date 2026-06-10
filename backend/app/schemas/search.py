@@ -34,6 +34,9 @@ class SearchResult(BaseModel):
     original_filename: str
     media_type: str
     mime_type: str
+    duration_ms: int | None = None
+    width: int | None = None
+    height: int | None = None
     thumbnail_url: str | None = None
     raw_url: str
     download_url: str

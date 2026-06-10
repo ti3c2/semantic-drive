@@ -9,11 +9,14 @@ import {
   ChevronRightIcon,
   CopyIcon,
   DownloadIcon,
+  ExpandIcon,
+  PauseIcon,
+  PlayIcon,
   ShareIcon,
   TrashIcon,
   XIcon,
 } from './icons';
-import { IconOnlyAction, MediaTypeIcon } from './media';
+import { IconOnlyAction } from './media';
 import { InlineSpinner } from './StatusIndicator';
 import { semanticDriveExtractionKey } from './uiState';
 import { formatBytes } from './utils';
@@ -33,6 +36,8 @@ type DetailDrawerProps = {
   openExtractionKeys: ReadonlySet<string>;
   trashingIds: ReadonlySet<string>;
   retryingIds: ReadonlySet<string>;
+  audioPlayerAssetId: string | null;
+  isAudioPlaying: boolean;
   canCycleAssets: boolean;
   isPending: boolean;
   onClose: () => void;
@@ -53,6 +58,7 @@ type DetailDrawerProps = {
   onMoveToTrash: (assetId: string) => void;
   onRetryProcessing: (assetId: string) => void;
   onDeleteExtraction: (extractionType: string) => void;
+  onToggleAudioPlayback: (assetId: string) => void;
 };
 
 export function DetailDrawer({
@@ -70,6 +76,8 @@ export function DetailDrawer({
   openExtractionKeys,
   trashingIds,
   retryingIds,
+  audioPlayerAssetId,
+  isAudioPlaying,
   canCycleAssets,
   isPending,
   onClose,
@@ -90,6 +98,7 @@ export function DetailDrawer({
   onMoveToTrash,
   onRetryProcessing,
   onDeleteExtraction,
+  onToggleAudioPlayback,
 }: DetailDrawerProps) {
   function handleFilenameKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key === 'Enter') {
@@ -104,6 +113,11 @@ export function DetailDrawer({
 
   const canOpenPreview = isMediaPreviewable(detail);
   const previewTitle = detail.display_title || detail.original_filename;
+  const isImagePreview = canOpenPreview && detail.media_type === 'image';
+  const isVideoPreview = canOpenPreview && detail.media_type === 'video';
+  const isAudioPreview = canOpenPreview && detail.media_type === 'audio';
+  const isCurrentAudioPlaying =
+    isAudioPreview && detail.id === audioPlayerAssetId && isAudioPlaying;
   const visualSummaryKey = semanticDriveExtractionKey(detail.id, 'visual_summary');
   const ocrKey = semanticDriveExtractionKey(detail.id, 'ocr');
   const transcriptKey = semanticDriveExtractionKey(detail.id, 'transcript');
@@ -165,29 +179,53 @@ export function DetailDrawer({
         {detail.mime_type} &middot; {formatBytes(detail.file_size_bytes)} &middot;{' '}
         {detail.processing_status}
       </div>
-      <div className={`sd-preview${canOpenPreview ? ' sd-preview-clickable' : ''}`}>
-        {canOpenPreview ? (
+      <div
+        className={`sd-preview${isImagePreview ? ' sd-preview-clickable' : ''}${isAudioPreview ? ' sd-preview-audio' : ''}`}
+      >
+        {isImagePreview ? (
           <button
             type="button"
             className="sd-preview-open"
             aria-label={`Open ${previewTitle} preview`}
             onClick={() => onOpenPreview(detail.id)}
           >
-            {detail.media_type === 'image' && <img src={api(detail.raw_url)} alt={previewTitle} />}
-            {detail.media_type === 'video' && (
-              <video
-                src={api(detail.raw_url)}
-                poster={detail.thumbnail_url ? api(detail.thumbnail_url) : undefined}
-                muted
-                playsInline
-                preload="metadata"
-              />
-            )}
-            {detail.media_type === 'audio' && (
-              <div className="sd-audio-preview" aria-hidden="true">
-                <MediaTypeIcon mediaType={detail.media_type} size={42} />
-              </div>
-            )}
+            <img src={api(detail.raw_url)} alt={previewTitle} />
+          </button>
+        ) : isVideoPreview ? (
+          <div className="sd-drawer-video-preview">
+            <video
+              src={api(detail.raw_url)}
+              poster={detail.thumbnail_url ? api(detail.thumbnail_url) : undefined}
+              controls
+              playsInline
+              preload="metadata"
+            />
+            <button
+              type="button"
+              className="sd-preview-fullscreen"
+              aria-label={`Open ${previewTitle} fullscreen`}
+              title="Open fullscreen"
+              onClick={() => onOpenPreview(detail.id)}
+            >
+              <ExpandIcon />
+            </button>
+          </div>
+        ) : isAudioPreview ? (
+          <button
+            type="button"
+            className="sd-audio-play-card"
+            aria-label={`${isCurrentAudioPlaying ? 'Pause' : 'Play'} ${previewTitle}`}
+            onClick={() => onToggleAudioPlayback(detail.id)}
+          >
+            <span
+              className={`sd-audio-play-button${
+                isCurrentAudioPlaying ? ' sd-audio-play-button-paused' : ''
+              }`}
+              aria-hidden="true"
+            >
+              {isCurrentAudioPlaying ? <PauseIcon size={28} /> : <PlayIcon size={28} />}
+            </span>
+            <span className="sd-audio-play-title">{previewTitle}</span>
           </button>
         ) : (
           <>

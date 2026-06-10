@@ -23,6 +23,9 @@ export function assetToDisplay(asset: Asset): DisplayItem {
     original_filename: asset.original_filename,
     media_type: asset.media_type,
     mime_type: asset.mime_type,
+    duration_ms: asset.duration_ms,
+    width: asset.width,
+    height: asset.height,
     thumbnail_url: asset.thumbnail_url,
     raw_url: asset.raw_url,
     download_url: asset.download_url,
@@ -39,6 +42,9 @@ export function resultToDisplay(result: SearchResult): DisplayItem {
     original_filename: result.original_filename,
     media_type: result.media_type,
     mime_type: result.mime_type,
+    duration_ms: result.duration_ms,
+    width: result.width,
+    height: result.height,
     thumbnail_url: result.thumbnail_url,
     raw_url: result.raw_url,
     download_url: result.download_url,
@@ -78,6 +84,13 @@ export function getCycledAssetId<T extends { id: string }>(
   const startingIndex = currentIndex >= 0 ? currentIndex : direction > 0 ? -1 : 0;
   const nextIndex = (startingIndex + direction + items.length) % items.length;
   return items[nextIndex]?.id ?? null;
+}
+
+export function getDisplayItemsByMediaType<T extends { media_type: string }>(
+  items: T[],
+  mediaType: string,
+) {
+  return items.filter((item) => item.media_type === mediaType);
 }
 
 export function isImageFile(file: File) {

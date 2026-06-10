@@ -4,6 +4,7 @@ import './SemanticDriveApp.css';
 import { ActionToast } from './semantic-drive/ActionToast';
 import { api } from './semantic-drive/api';
 import { AssetGrid } from './semantic-drive/AssetGrid';
+import { AudioPlayerBar } from './semantic-drive/AudioPlayerBar';
 import { isMediaPreviewable } from './semantic-drive/assetPreview';
 import { copyImageUrlToClipboard, copyTextToClipboard } from './semantic-drive/clipboard';
 import { shouldCloseDetailDrawerForPointerTarget } from './semantic-drive/detailDrawerClickAway';
@@ -15,6 +16,8 @@ import {
   MediaFilterBar,
   type MediaTypeFilter,
 } from './semantic-drive/MediaFilterBar';
+import type { PlaybackMode } from './semantic-drive/MediaPlayerControls';
+import { isMediaShortcutControlTarget, isPlaybackToggleKey } from './semantic-drive/mediaPlayer';
 import { Sidebar } from './semantic-drive/Sidebar';
 import type {
   ActionFeedback,
@@ -35,6 +38,7 @@ import {
   assetToDisplay,
   fileKey,
   getCycledAssetId,
+  getDisplayItemsByMediaType,
   isLiveStatus,
   parseTagNames,
   resultToDisplay,
@@ -69,6 +73,11 @@ export default function SemanticDriveApp() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [previewAssetId, setPreviewAssetId] = useState<string | null>(null);
   const [previewReturnToDrawer, setPreviewReturnToDrawer] = useState(false);
+  const [audioPlayerAssetId, setAudioPlayerAssetId] = useState<string | null>(null);
+  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+  const [audioPlaybackRate, setAudioPlaybackRate] = useState(1);
+  const [audioVolume, setAudioVolume] = useState(0.8);
+  const [audioPlaybackMode, setAudioPlaybackMode] = useState<PlaybackMode>('advance');
   const [detail, setDetail] = useState<AssetDetail | null>(null);
   const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
   const [uiStateRestored, setUiStateRestored] = useState(false);
@@ -369,21 +378,99 @@ export default function SemanticDriveApp() {
     return [assetToDisplay(detail), ...displayed];
   }, [detail, displayed]);
 
-  const previewItems = useMemo(() => drawerItems.filter(isMediaPreviewable), [drawerItems]);
+  const displayedAudioItems = useMemo(
+    () => (isTrashView ? [] : getDisplayItemsByMediaType(displayed, 'audio')),
+    [displayed, isTrashView],
+  );
+  const displayedVideoItems = useMemo(
+    () => (isTrashView ? [] : getDisplayItemsByMediaType(displayed, 'video')),
+    [displayed, isTrashView],
+  );
+  const knownPlaybackItems = useMemo(() => {
+    const seen = new Set<string>();
+    const items = [
+      ...(detail ? [assetToDisplay(detail)] : []),
+      ...displayed,
+      ...assets.map(assetToDisplay),
+    ];
+    return items.filter((item) => {
+      if (seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
+    });
+  }, [assets, detail, displayed]);
+
+  const audioPlayerItem = useMemo(() => {
+    if (!audioPlayerAssetId) return null;
+    return (
+      knownPlaybackItems.find(
+        (item) => item.id === audioPlayerAssetId && item.media_type === 'audio',
+      ) ?? null
+    );
+  }, [audioPlayerAssetId, knownPlaybackItems]);
+
+  const previewItems = useMemo(
+    () => drawerItems.filter((item) => item.media_type !== 'audio' && isMediaPreviewable(item)),
+    [drawerItems],
+  );
 
   const previewAsset = useMemo(() => {
     if (!previewAssetId) return null;
     return previewItems.find((item) => item.id === previewAssetId) ?? null;
   }, [previewAssetId, previewItems]);
 
+  const previewCycleItems = useMemo(() => {
+    if (!previewAsset) return [];
+    if (previewAsset.media_type !== 'video') return previewItems;
+    if (displayedVideoItems.some((item) => item.id === previewAsset.id)) return displayedVideoItems;
+    return [previewAsset, ...displayedVideoItems];
+  }, [displayedVideoItems, previewAsset, previewItems]);
+
   const canCycleDrawerAssets = drawerItems.length > 1;
-  const canCyclePreviewAssets = previewItems.length > 1;
+  const canCyclePreviewAssets = previewCycleItems.length > 1;
+  const canNavigateAudioAssets =
+    displayedAudioItems.length > 1 ||
+    Boolean(
+      audioPlayerAssetId &&
+      displayedAudioItems.length > 0 &&
+      !displayedAudioItems.some((item) => item.id === audioPlayerAssetId),
+    );
   const isDetailPending = Boolean(detail && selectedId && detail.id !== selectedId);
 
   const openFullscreenPreview = useCallback((assetId: string, returnToDrawer = false) => {
     setPreviewReturnToDrawer(returnToDrawer);
     setPreviewAssetId(assetId);
   }, []);
+
+  const openAudioPlayer = useCallback((assetId: string) => {
+    setAudioPlayerAssetId(assetId);
+    setIsAudioPlaying(true);
+  }, []);
+
+  const toggleAudioPlayback = useCallback((assetId: string) => {
+    setAudioPlayerAssetId((currentId) => {
+      if (currentId === assetId) {
+        setIsAudioPlaying((current) => !current);
+        return currentId;
+      }
+      setIsAudioPlaying(true);
+      return assetId;
+    });
+  }, []);
+
+  const openMediaPreview = useCallback(
+    (assetId: string, returnToDrawer = false) => {
+      const item =
+        drawerItems.find((candidate) => candidate.id === assetId) ??
+        knownPlaybackItems.find((candidate) => candidate.id === assetId);
+      if (item?.media_type === 'audio') {
+        openAudioPlayer(assetId);
+        return;
+      }
+      openFullscreenPreview(assetId, returnToDrawer);
+    },
+    [drawerItems, knownPlaybackItems, openAudioPlayer, openFullscreenPreview],
+  );
 
   const closeFullscreenPreview = useCallback(() => {
     setPreviewAssetId((currentId) => {
@@ -399,9 +486,9 @@ export default function SemanticDriveApp() {
 
   const cyclePreviewAsset = useCallback(
     (direction: -1 | 1) => {
-      setPreviewAssetId((currentId) => getCycledAssetId(previewItems, currentId, direction));
+      setPreviewAssetId((currentId) => getCycledAssetId(previewCycleItems, currentId, direction));
     },
-    [previewItems],
+    [previewCycleItems],
   );
 
   const cycleDetailAsset = useCallback(
@@ -414,6 +501,38 @@ export default function SemanticDriveApp() {
     },
     [drawerItems],
   );
+
+  const cycleAudioAsset = useCallback(
+    (direction: -1 | 1) => {
+      setAudioPlayerAssetId((currentId) => {
+        const nextId = getCycledAssetId(displayedAudioItems, currentId, direction);
+        return nextId ?? currentId;
+      });
+      setIsAudioPlaying(true);
+    },
+    [displayedAudioItems],
+  );
+
+  const closeAudioPlayer = useCallback(() => {
+    setIsAudioPlaying(false);
+    setAudioPlayerAssetId(null);
+  }, []);
+
+  const openAudioDrawer = useCallback(() => {
+    if (!audioPlayerAssetId) return;
+    setViewMode('library');
+    setSelectedId(audioPlayerAssetId);
+    setSharePayload(null);
+    setIsEditingFilename(false);
+  }, [audioPlayerAssetId]);
+
+  const handleAudioEnded = useCallback(() => {
+    if (canNavigateAudioAssets) {
+      cycleAudioAsset(1);
+      return;
+    }
+    setIsAudioPlaying(false);
+  }, [canNavigateAudioAssets, cycleAudioAsset]);
 
   const toggleExtractionOpen = useCallback((key: string) => {
     setOpenExtractionKeys((current) => {
@@ -464,6 +583,30 @@ export default function SemanticDriveApp() {
     setPreviewAssetId(null);
     setPreviewReturnToDrawer(false);
   }, [assetsLoaded, previewAsset, previewAssetId]);
+
+  useEffect(() => {
+    if (!audioPlayerAssetId || audioPlayerItem || !assetsLoaded) return;
+    closeAudioPlayer();
+  }, [assetsLoaded, audioPlayerAssetId, audioPlayerItem, closeAudioPlayer]);
+
+  useEffect(() => {
+    if (!audioPlayerItem || previewAsset) return;
+
+    const handleAudioPlayerKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.repeat ||
+        !isPlaybackToggleKey(event) ||
+        isMediaShortcutControlTarget(event.target)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      setIsAudioPlaying((current) => !current);
+    };
+
+    document.addEventListener('keydown', handleAudioPlayerKeyDown);
+    return () => document.removeEventListener('keydown', handleAudioPlayerKeyDown);
+  }, [audioPlayerItem, previewAsset]);
 
   useEffect(() => {
     if (!previewAssetId) return;
@@ -921,6 +1064,9 @@ export default function SemanticDriveApp() {
       setResults((current) => current.filter((result) => result.asset_id !== assetId));
       setPreviewAssetId((current) => (current === assetId ? null : current));
       setPreviewReturnToDrawer((current) => (previewAssetId === assetId ? false : current));
+      if (audioPlayerAssetId === assetId) {
+        closeAudioPlayer();
+      }
       if (selectedIdRef.current === assetId) {
         setSelectedId(null);
         setDetail(null);
@@ -1080,6 +1226,7 @@ export default function SemanticDriveApp() {
     setSelectedId(null);
     setPreviewAssetId(null);
     setPreviewReturnToDrawer(false);
+    closeAudioPlayer();
     setDetail(null);
     setSharePayload(null);
   }
@@ -1184,6 +1331,8 @@ export default function SemanticDriveApp() {
           purgingIds={purgingIds}
           trashingIds={trashingIds}
           retryingIds={retryingIds}
+          audioPlayerAssetId={audioPlayerAssetId}
+          isAudioPlaying={isAudioPlaying}
           onSelectAsset={setSelectedId}
           onCopyItem={copyItemToClipboard}
           onCreateShare={createShareSafely}
@@ -1191,7 +1340,8 @@ export default function SemanticDriveApp() {
           onRestoreAsset={restoreAsset}
           onPurgeAsset={purgeAsset}
           onRetryProcessing={retryProcessing}
-          onOpenPreview={(assetId) => openFullscreenPreview(assetId, false)}
+          onOpenPreview={(assetId) => openMediaPreview(assetId, false)}
+          onToggleAudioPlayback={toggleAudioPlayback}
         />
       </section>
 
@@ -1211,10 +1361,12 @@ export default function SemanticDriveApp() {
           openExtractionKeys={openExtractionKeys}
           trashingIds={trashingIds}
           retryingIds={retryingIds}
+          audioPlayerAssetId={audioPlayerAssetId}
+          isAudioPlaying={isAudioPlaying}
           canCycleAssets={canCycleDrawerAssets}
           isPending={isDetailPending}
           onClose={closeDetailDrawer}
-          onOpenPreview={(assetId) => openFullscreenPreview(assetId, true)}
+          onOpenPreview={(assetId) => openMediaPreview(assetId, true)}
           onPreviousAsset={() => cycleDetailAsset(-1)}
           onNextAsset={() => cycleDetailAsset(1)}
           onStartFilenameEdit={startFilenameEdit}
@@ -1231,6 +1383,7 @@ export default function SemanticDriveApp() {
           onMoveToTrash={moveAssetToTrash}
           onRetryProcessing={retryProcessing}
           onDeleteExtraction={deleteExtraction}
+          onToggleAudioPlayback={toggleAudioPlayback}
         />
       )}
 
@@ -1241,6 +1394,28 @@ export default function SemanticDriveApp() {
           onClose={closeFullscreenPreview}
           onPrevious={() => cyclePreviewAsset(-1)}
           onNext={() => cyclePreviewAsset(1)}
+        />
+      )}
+
+      {audioPlayerItem && (
+        <AudioPlayerBar
+          item={audioPlayerItem}
+          isPlaying={isAudioPlaying}
+          playbackRate={audioPlaybackRate}
+          volume={audioVolume}
+          playbackMode={audioPlaybackMode}
+          canNavigate={canNavigateAudioAssets}
+          onPlayingChange={setIsAudioPlaying}
+          onPlaybackRateChange={setAudioPlaybackRate}
+          onVolumeChange={setAudioVolume}
+          onTogglePlaybackMode={() =>
+            setAudioPlaybackMode((current) => (current === 'repeat' ? 'advance' : 'repeat'))
+          }
+          onPrevious={() => cycleAudioAsset(-1)}
+          onNext={() => cycleAudioAsset(1)}
+          onEnded={handleAudioEnded}
+          onOpenDrawer={openAudioDrawer}
+          onClose={closeAudioPlayer}
         />
       )}
 

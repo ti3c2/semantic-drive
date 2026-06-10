@@ -59,13 +59,7 @@ def probe_media(path: Path, media_type: str, mime_type: str) -> MediaInfo:
     completed = subprocess.run(cmd, check=True, capture_output=True, text=True)
     payload = json.loads(completed.stdout or "{}")
 
-    duration_ms = None
-    duration = payload.get("format", {}).get("duration")
-    if duration is not None:
-        try:
-            duration_ms = int(float(duration) * 1000)
-        except (TypeError, ValueError):
-            duration_ms = None
+    duration_ms = _duration_ms_from_probe_payload(payload)
 
     width = None
     height = None
@@ -84,3 +78,20 @@ def probe_media(path: Path, media_type: str, mime_type: str) -> MediaInfo:
         width=width,
         height=height,
     )
+
+
+def _duration_ms_from_probe_payload(payload: dict) -> int | None:
+    candidates = [payload.get("format", {}).get("duration")]
+    candidates.extend(stream.get("duration") for stream in payload.get("streams", []))
+
+    for duration in candidates:
+        if duration in {None, "N/A"}:
+            continue
+        try:
+            value = float(duration)
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            return int(value * 1000)
+
+    return None

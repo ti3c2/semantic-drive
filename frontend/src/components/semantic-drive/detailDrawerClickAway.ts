@@ -1,4 +1,5 @@
-const DETAIL_DRAWER_EXEMPT_TARGET_SELECTOR = '.sd-card, .sd-sidebar, .sd-sidebar-open-button';
+const DETAIL_DRAWER_EXEMPT_TARGET_SELECTOR =
+  '.sd-card, .sd-sidebar, .sd-sidebar-open-button, .sd-audio-player-bar';
 
 type ClosestTarget = {
   closest: (selector: string) => unknown;

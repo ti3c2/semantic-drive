@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
@@ -23,7 +23,7 @@ from app.services.embeddings import embed_texts
 from app.services.events import publish_asset_event
 from app.services.media_probe import detect_media_type, guess_mime_type
 from app.services.qdrant_index import delete_asset_points, point_struct, upsert_points
-from app.services.storage import fput_file, get_object_stream, remove_object
+from app.services.storage import fput_file, get_object_stream, remove_object, stat_object
 from app.services.taxonomy import get_folders, get_or_create_tags
 from app.services.text_chunking import chunks_for_asset
 from app.workers.enqueue import enqueue_asset_ingestion
@@ -37,6 +37,11 @@ EXTRACTION_TYPE_ALIASES = {
     "ocr": "ocr",
     "transcript": "transcript",
 }
+
+STREAM_CHUNK_SIZE = 32 * 1024
+
+
+type ByteRange = tuple[int, int]
 
 
 def _safe_filename(filename: str | None, *, default: str = "upload.bin") -> str:
@@ -232,21 +237,97 @@ def _enqueue_processing_retry(asset: Asset, db: Session) -> None:
         raise HTTPException(status_code=503, detail="Failed to enqueue retry") from exc
 
 
+def _parse_range_header(range_header: str | None, object_size: int) -> ByteRange | None:
+    if not range_header:
+        return None
+    if object_size <= 0 or not range_header.startswith("bytes="):
+        raise HTTPException(
+            status_code=416,
+            detail="Requested range not satisfiable",
+            headers={"Content-Range": f"bytes */{object_size}"},
+        )
+
+    range_value = range_header.removeprefix("bytes=").strip()
+    if "," in range_value or "-" not in range_value:
+        raise HTTPException(
+            status_code=416,
+            detail="Requested range not satisfiable",
+            headers={"Content-Range": f"bytes */{object_size}"},
+        )
+
+    start_raw, end_raw = range_value.split("-", 1)
+    try:
+        if start_raw:
+            start = int(start_raw)
+            end = int(end_raw) if end_raw else object_size - 1
+        else:
+            suffix_length = int(end_raw)
+            if suffix_length <= 0:
+                raise ValueError
+            start = max(object_size - suffix_length, 0)
+            end = object_size - 1
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=416,
+            detail="Requested range not satisfiable",
+            headers={"Content-Range": f"bytes */{object_size}"},
+        ) from exc
+
+    if start < 0 or start >= object_size or end < start:
+        raise HTTPException(
+            status_code=416,
+            detail="Requested range not satisfiable",
+            headers={"Content-Range": f"bytes */{object_size}"},
+        )
+
+    return start, min(end, object_size - 1)
+
+
 def _stream_object(
-    object_name: str, *, content_type: str, filename: str, attachment: bool
+    object_name: str,
+    *,
+    content_type: str,
+    filename: str,
+    attachment: bool,
+    range_header: str | None = None,
+    enable_range: bool = False,
 ) -> StreamingResponse:
-    response = get_object_stream(object_name)
+    object_size = stat_object(object_name).size if enable_range else None
+    byte_range = _parse_range_header(range_header, object_size) if object_size is not None else None
+    offset = byte_range[0] if byte_range else 0
+    length = byte_range[1] - byte_range[0] + 1 if byte_range else None
+    response = (
+        get_object_stream(object_name, offset=offset, length=length)
+        if enable_range
+        else get_object_stream(object_name)
+    )
 
     def iterator():
         try:
-            for chunk in response.stream(32 * 1024):
+            for chunk in response.stream(STREAM_CHUNK_SIZE):
                 yield chunk
         finally:
             response.close()
             response.release_conn()
 
     headers = {"Content-Disposition": content_disposition_header(filename, attachment=attachment)}
-    return StreamingResponse(iterator(), media_type=content_type, headers=headers)
+    status_code = 200
+    if object_size is not None:
+        headers["Accept-Ranges"] = "bytes"
+        if byte_range:
+            start, end = byte_range
+            headers["Content-Range"] = f"bytes {start}-{end}/{object_size}"
+            headers["Content-Length"] = str(end - start + 1)
+            status_code = 206
+        else:
+            headers["Content-Length"] = str(object_size)
+
+    return StreamingResponse(
+        iterator(),
+        media_type=content_type,
+        headers=headers,
+        status_code=status_code,
+    )
 
 
 @router.post("", response_model=AssetOut, status_code=201)
@@ -569,7 +650,11 @@ def get_thumbnail(asset_id: UUID, db: Session = Depends(get_db)) -> StreamingRes
 
 
 @router.get("/{asset_id}/raw")
-def get_raw_asset(asset_id: UUID, db: Session = Depends(get_db)) -> StreamingResponse:
+def get_raw_asset(
+    asset_id: UUID,
+    db: Session = Depends(get_db),
+    range_header: Annotated[str | None, Header(alias="Range")] = None,
+) -> StreamingResponse:
     asset = db.scalar(
         select(Asset).where(
             Asset.id == asset_id,
@@ -584,6 +669,8 @@ def get_raw_asset(asset_id: UUID, db: Session = Depends(get_db)) -> StreamingRes
         content_type=asset.mime_type,
         filename=asset.original_filename,
         attachment=False,
+        range_header=range_header,
+        enable_range=True,
     )
 
 

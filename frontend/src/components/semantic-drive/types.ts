@@ -32,6 +32,9 @@ export type SearchResult = {
   original_filename: string;
   media_type: string;
   mime_type: string;
+  duration_ms?: number | null;
+  width?: number | null;
+  height?: number | null;
   thumbnail_url?: string | null;
   raw_url: string;
   download_url: string;
@@ -49,6 +52,9 @@ export type DisplayItem = {
   original_filename: string;
   media_type: string;
   mime_type: string;
+  duration_ms?: number | null;
+  width?: number | null;
+  height?: number | null;
   thumbnail_url?: string | null;
   raw_url: string;
   download_url: string;

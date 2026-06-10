@@ -39,6 +39,13 @@ test('drawer click-away ignores sidebar controls', () => {
   );
 });
 
+test('drawer click-away ignores audio player controls', () => {
+  assert.equal(
+    shouldCloseDetailDrawerForPointerTarget(targetWithClosestMatch('.sd-audio-player-bar'), false),
+    false,
+  );
+});
+
 test('drawer click-away closes on ordinary page clicks', () => {
   assert.equal(shouldCloseDetailDrawerForPointerTarget(targetWithClosestMatch(null), false), true);
 });

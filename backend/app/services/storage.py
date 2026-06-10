@@ -79,9 +79,19 @@ def fget_file(object_name: str, path: Path) -> Path:
     return path
 
 
-def get_object_stream(object_name: str):
+def get_object_stream(object_name: str, *, offset: int = 0, length: int | None = None):
     ensure_bucket()
-    return get_minio_client().get_object(settings.minio_bucket, object_name)
+    return get_minio_client().get_object(
+        settings.minio_bucket,
+        object_name,
+        offset=offset,
+        length=length,
+    )
+
+
+def stat_object(object_name: str):
+    ensure_bucket()
+    return get_minio_client().stat_object(settings.minio_bucket, object_name)
 
 
 @retry(stop=stop_after_attempt(4), wait=wait_exponential_jitter(initial=0.5, max=8))

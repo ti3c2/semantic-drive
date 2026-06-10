@@ -1,7 +1,15 @@
 import type { DisplayItem } from './types';
 import { api } from './api';
 import { assetPreviewImageUrl, isMediaPreviewable } from './assetPreview';
-import { CopyIcon, DownloadIcon, ExpandIcon, ShareIcon, TrashIcon } from './icons';
+import {
+  CopyIcon,
+  DownloadIcon,
+  ExpandIcon,
+  PauseIcon,
+  PlayIcon,
+  ShareIcon,
+  TrashIcon,
+} from './icons';
 import { IconOnlyAction, MediaTypeIcon, mediaTypeLabel } from './media';
 import { StatusIndicator } from './StatusIndicator';
 
@@ -13,6 +21,8 @@ type AssetGridProps = {
   purgingIds: ReadonlySet<string>;
   trashingIds: ReadonlySet<string>;
   retryingIds: ReadonlySet<string>;
+  audioPlayerAssetId: string | null;
+  isAudioPlaying: boolean;
   onSelectAsset: (assetId: string) => void;
   onCopyItem: (item: DisplayItem) => void;
   onCreateShare: (assetId: string) => void;
@@ -21,6 +31,7 @@ type AssetGridProps = {
   onPurgeAsset: (assetId: string) => void;
   onRetryProcessing: (assetId: string) => void;
   onOpenPreview: (assetId: string) => void;
+  onToggleAudioPlayback: (assetId: string) => void;
 };
 
 export function AssetGrid({
@@ -31,6 +42,8 @@ export function AssetGrid({
   purgingIds,
   trashingIds,
   retryingIds,
+  audioPlayerAssetId,
+  isAudioPlaying,
   onSelectAsset,
   onCopyItem,
   onCreateShare,
@@ -39,6 +52,7 @@ export function AssetGrid({
   onPurgeAsset,
   onRetryProcessing,
   onOpenPreview,
+  onToggleAudioPlayback,
 }: AssetGridProps) {
   return (
     <section className="sd-grid">
@@ -47,6 +61,9 @@ export function AssetGrid({
           allowRawImageFallback: !isTrashView,
         });
         const canOpenPreview = !isTrashView && isMediaPreviewable(item);
+        const usesPlayButton = item.media_type === 'audio' || item.media_type === 'video';
+        const isCurrentAudio = item.media_type === 'audio' && item.id === audioPlayerAssetId;
+        const isCurrentAudioPlaying = isCurrentAudio && isAudioPlaying;
         const isSelected = !isTrashView && item.id === selectedAssetId;
         return (
           <article
@@ -74,14 +91,32 @@ export function AssetGrid({
               {canOpenPreview && (
                 <button
                   type="button"
-                  className="sd-thumb-expand"
-                  aria-label={`Open ${item.title} preview`}
+                  className={`sd-thumb-expand${usesPlayButton ? ' sd-thumb-play' : ''}${
+                    isCurrentAudioPlaying ? ' sd-thumb-pause' : ''
+                  }`}
+                  aria-label={
+                    item.media_type === 'audio'
+                      ? `${isCurrentAudioPlaying ? 'Pause' : 'Play'} ${item.title}`
+                      : usesPlayButton
+                        ? `Play ${item.title}`
+                        : `Open ${item.title} preview`
+                  }
                   onClick={(event) => {
                     event.stopPropagation();
-                    onOpenPreview(item.id);
+                    if (item.media_type === 'audio') {
+                      onToggleAudioPlayback(item.id);
+                    } else {
+                      onOpenPreview(item.id);
+                    }
                   }}
                 >
-                  <ExpandIcon size={18} />
+                  {isCurrentAudioPlaying ? (
+                    <PauseIcon size={20} />
+                  ) : usesPlayButton ? (
+                    <PlayIcon size={20} />
+                  ) : (
+                    <ExpandIcon size={18} />
+                  )}
                 </button>
               )}
               <StatusIndicator status={item.status} />

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
+import pytest
+from fastapi import HTTPException
 from starlette.responses import StreamingResponse
 
 from app.api.http_headers import content_disposition_header
@@ -58,6 +60,84 @@ def test_asset_stream_response_accepts_unicode_filename(monkeypatch) -> None:
     assert quote("шизальтуха.jpg", safe="") in response.headers["content-disposition"]
 
 
+def test_asset_stream_response_advertises_ranges_for_media(monkeypatch) -> None:
+    from app.api.routes import assets
+
+    captured_ranges = []
+
+    def fake_get_object_stream(_object_name, *, offset=0, length=None):
+        captured_ranges.append((offset, length))
+        return FakeObjectResponse()
+
+    monkeypatch.setattr(assets, "stat_object", lambda _object_name: FakeObjectStat(size=1000))
+    monkeypatch.setattr(assets, "get_object_stream", fake_get_object_stream)
+
+    response = assets._stream_object(
+        "objects/original",
+        content_type="video/mp4",
+        filename="clip.mp4",
+        attachment=False,
+        enable_range=True,
+    )
+
+    assert response.status_code == 200
+    assert response.headers["accept-ranges"] == "bytes"
+    assert response.headers["content-length"] == "1000"
+    assert captured_ranges == [(0, None)]
+
+
+def test_asset_stream_response_serves_byte_range(monkeypatch) -> None:
+    from app.api.routes import assets
+
+    captured_ranges = []
+
+    def fake_get_object_stream(_object_name, *, offset=0, length=None):
+        captured_ranges.append((offset, length))
+        return FakeObjectResponse()
+
+    monkeypatch.setattr(assets, "stat_object", lambda _object_name: FakeObjectStat(size=1000))
+    monkeypatch.setattr(assets, "get_object_stream", fake_get_object_stream)
+
+    response = assets._stream_object(
+        "objects/original",
+        content_type="video/mp4",
+        filename="clip.mp4",
+        attachment=False,
+        range_header="bytes=100-199",
+        enable_range=True,
+    )
+
+    assert response.status_code == 206
+    assert response.headers["accept-ranges"] == "bytes"
+    assert response.headers["content-range"] == "bytes 100-199/1000"
+    assert response.headers["content-length"] == "100"
+    assert captured_ranges == [(100, 100)]
+
+
+def test_asset_stream_response_rejects_invalid_byte_range(monkeypatch) -> None:
+    from app.api.routes import assets
+
+    monkeypatch.setattr(assets, "stat_object", lambda _object_name: FakeObjectStat(size=1000))
+    monkeypatch.setattr(
+        assets,
+        "get_object_stream",
+        lambda *_args, **_kwargs: pytest.fail("invalid range should not stream"),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        assets._stream_object(
+            "objects/original",
+            content_type="video/mp4",
+            filename="clip.mp4",
+            attachment=False,
+            range_header="bytes=1000-1001",
+            enable_range=True,
+        )
+
+    assert exc_info.value.status_code == 416
+    assert exc_info.value.headers == {"Content-Range": "bytes */1000"}
+
+
 def test_share_stream_response_accepts_unicode_filename(monkeypatch) -> None:
     from app.api.routes import shares
 
@@ -83,3 +163,8 @@ class FakeObjectResponse:
 
     def release_conn(self) -> None:
         pass
+
+
+class FakeObjectStat:
+    def __init__(self, *, size: int) -> None:
+        self.size = size
