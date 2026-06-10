@@ -6,6 +6,7 @@ import { api } from './semantic-drive/api';
 import { AssetGrid } from './semantic-drive/AssetGrid';
 import { isMediaPreviewable } from './semantic-drive/assetPreview';
 import { copyImageUrlToClipboard, copyTextToClipboard } from './semantic-drive/clipboard';
+import { shouldCloseDetailDrawerForPointerTarget } from './semantic-drive/detailDrawerClickAway';
 import { DetailDrawer } from './semantic-drive/DetailDrawer';
 import { FileDropzone } from './semantic-drive/FileDropzone';
 import { FullscreenPreview } from './semantic-drive/FullscreenPreview';
@@ -24,6 +25,10 @@ import type {
   SharePayload,
   ViewMode,
 } from './semantic-drive/types';
+import {
+  readStoredSemanticDriveUiState,
+  writeStoredSemanticDriveUiState,
+} from './semantic-drive/uiState';
 import { UploadModal } from './semantic-drive/UploadModal';
 import { uploadAssetBatch } from './semantic-drive/uploadQueue';
 import {
@@ -50,6 +55,7 @@ function isEditableKeyTarget(target: EventTarget | null) {
 export default function SemanticDriveApp() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [trashAssets, setTrashAssets] = useState<Asset[]>([]);
+  const [assetsLoaded, setAssetsLoaded] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [query, setQuery] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -65,6 +71,8 @@ export default function SemanticDriveApp() {
   const [previewReturnToDrawer, setPreviewReturnToDrawer] = useState(false);
   const [detail, setDetail] = useState<AssetDetail | null>(null);
   const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
+  const [uiStateRestored, setUiStateRestored] = useState(false);
+  const [openExtractionKeys, setOpenExtractionKeys] = useState<Set<string>>(() => new Set());
   const [activeMediaTypes, setActiveMediaTypes] = useState<MediaTypeFilter[]>(() => [
     ...MEDIA_TYPE_FILTERS,
   ]);
@@ -171,7 +179,41 @@ export default function SemanticDriveApp() {
     ]);
     setAssets(activeItems);
     setTrashAssets(trashItems);
+    setAssetsLoaded(true);
   }, []);
+
+  useEffect(() => {
+    const restored = readStoredSemanticDriveUiState();
+    setIsSidebarOpen(restored.isSidebarOpen);
+    setViewMode(restored.viewMode);
+    setOpenExtractionKeys(new Set(restored.openExtractionKeys));
+    setSelectedId(restored.selectedAssetId);
+    setPreviewAssetId(restored.previewAssetId);
+    setPreviewReturnToDrawer(restored.previewReturnToDrawer);
+    setUiStateRestored(true);
+  }, []);
+
+  useEffect(() => {
+    if (!uiStateRestored) return;
+
+    writeStoredSemanticDriveUiState({
+      version: 1,
+      isSidebarOpen,
+      viewMode,
+      selectedAssetId: viewMode === 'library' ? selectedId : null,
+      previewAssetId: viewMode === 'library' ? previewAssetId : null,
+      previewReturnToDrawer: viewMode === 'library' ? previewReturnToDrawer : false,
+      openExtractionKeys: [...openExtractionKeys].sort(),
+    });
+  }, [
+    isSidebarOpen,
+    openExtractionKeys,
+    previewAssetId,
+    previewReturnToDrawer,
+    selectedId,
+    uiStateRestored,
+    viewMode,
+  ]);
 
   const fetchAssetDetail = useCallback(async (assetId: string) => {
     const response = await fetch(api(`/api/assets/${assetId}`));
@@ -207,9 +249,9 @@ export default function SemanticDriveApp() {
     const closeOnOutsidePointerDown = (event: PointerEvent) => {
       const drawer = detailDrawerRef.current;
       const target = event.target;
-      if (!drawer || !(target instanceof Node) || drawer.contains(target)) return;
+      if (!drawer || !(target instanceof Node)) return;
       const targetElement = target instanceof Element ? target : target.parentElement;
-      if (targetElement?.closest('.sd-card')) return;
+      if (!shouldCloseDetailDrawerForPointerTarget(targetElement, drawer.contains(target))) return;
       closeDetailDrawer();
     };
 
@@ -373,6 +415,18 @@ export default function SemanticDriveApp() {
     [drawerItems],
   );
 
+  const toggleExtractionOpen = useCallback((key: string) => {
+    setOpenExtractionKeys((current) => {
+      const next = new Set(current);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
+
   const detailTagNames = useMemo(() => parseTagNames(detailTagsDraft), [detailTagsDraft]);
   const detailHasChanges = useMemo(() => {
     if (!detail) return false;
@@ -406,10 +460,10 @@ export default function SemanticDriveApp() {
   }, [fetchAssetDetail, hasLiveWork, loadAssets]);
 
   useEffect(() => {
-    if (!previewAssetId || previewAsset) return;
+    if (!previewAssetId || previewAsset || !assetsLoaded) return;
     setPreviewAssetId(null);
     setPreviewReturnToDrawer(false);
-  }, [previewAsset, previewAssetId]);
+  }, [assetsLoaded, previewAsset, previewAssetId]);
 
   useEffect(() => {
     if (!previewAssetId) return;
@@ -1154,6 +1208,7 @@ export default function SemanticDriveApp() {
           savingFilename={savingFilename}
           savingDetail={savingDetail}
           deletingExtractions={deletingExtractions}
+          openExtractionKeys={openExtractionKeys}
           trashingIds={trashingIds}
           retryingIds={retryingIds}
           canCycleAssets={canCycleDrawerAssets}
@@ -1170,6 +1225,7 @@ export default function SemanticDriveApp() {
           onCancelMetadataEdit={cancelMetadataEdit}
           onDescriptionChange={setDetailDescriptionDraft}
           onTagsChange={setDetailTagsDraft}
+          onToggleExtraction={toggleExtractionOpen}
           onCopyRawUrl={copyRawUrlSafely}
           onCreateShare={createShareSafely}
           onMoveToTrash={moveAssetToTrash}

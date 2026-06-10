@@ -4,23 +4,36 @@ import { InlineSpinner } from './StatusIndicator';
 type ExtractionProps = {
   title: string;
   text?: string | null;
+  open?: boolean;
   deleting?: boolean;
+  onToggle?: () => void;
   onDelete?: () => void;
 };
 
-export function Extraction({ title, text, deleting, onDelete }: ExtractionProps) {
-  const [open, setOpen] = useState(false);
+export function Extraction({ title, text, open, deleting, onToggle, onDelete }: ExtractionProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
   if (!text) return null;
+
+  const isOpen = open ?? internalOpen;
+
+  function toggleOpen() {
+    if (onToggle) {
+      onToggle();
+      return;
+    }
+    setInternalOpen((current) => !current);
+  }
+
   return (
     <section className="sd-extraction">
       <div className="sd-extraction-header">
         <button
           type="button"
           className="sd-extraction-toggle"
-          aria-expanded={open}
-          onClick={() => setOpen((current) => !current)}
+          aria-expanded={isOpen}
+          onClick={toggleOpen}
         >
-          <span>{open ? '-' : '+'}</span>
+          <span>{isOpen ? '-' : '+'}</span>
           {title}
         </button>
         {onDelete && (
@@ -35,7 +48,7 @@ export function Extraction({ title, text, deleting, onDelete }: ExtractionProps)
           </button>
         )}
       </div>
-      {open && <pre>{text}</pre>}
+      {isOpen && <pre>{text}</pre>}
     </section>
   );
 }

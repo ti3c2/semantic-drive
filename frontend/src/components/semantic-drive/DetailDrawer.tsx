@@ -15,6 +15,7 @@ import {
 } from './icons';
 import { IconOnlyAction, MediaTypeIcon } from './media';
 import { InlineSpinner } from './StatusIndicator';
+import { semanticDriveExtractionKey } from './uiState';
 import { formatBytes } from './utils';
 
 type DetailDrawerProps = {
@@ -29,6 +30,7 @@ type DetailDrawerProps = {
   savingFilename: boolean;
   savingDetail: boolean;
   deletingExtractions: ReadonlySet<string>;
+  openExtractionKeys: ReadonlySet<string>;
   trashingIds: ReadonlySet<string>;
   retryingIds: ReadonlySet<string>;
   canCycleAssets: boolean;
@@ -45,6 +47,7 @@ type DetailDrawerProps = {
   onCancelMetadataEdit: () => void;
   onDescriptionChange: (value: string) => void;
   onTagsChange: (value: string) => void;
+  onToggleExtraction: (key: string) => void;
   onCopyRawUrl: (path: string) => void;
   onCreateShare: (assetId: string) => void;
   onMoveToTrash: (assetId: string) => void;
@@ -64,6 +67,7 @@ export function DetailDrawer({
   savingFilename,
   savingDetail,
   deletingExtractions,
+  openExtractionKeys,
   trashingIds,
   retryingIds,
   canCycleAssets,
@@ -80,6 +84,7 @@ export function DetailDrawer({
   onCancelMetadataEdit,
   onDescriptionChange,
   onTagsChange,
+  onToggleExtraction,
   onCopyRawUrl,
   onCreateShare,
   onMoveToTrash,
@@ -99,6 +104,9 @@ export function DetailDrawer({
 
   const canOpenPreview = isMediaPreviewable(detail);
   const previewTitle = detail.display_title || detail.original_filename;
+  const visualSummaryKey = semanticDriveExtractionKey(detail.id, 'visual_summary');
+  const ocrKey = semanticDriveExtractionKey(detail.id, 'ocr');
+  const transcriptKey = semanticDriveExtractionKey(detail.id, 'transcript');
 
   return (
     <aside
@@ -299,19 +307,25 @@ export function DetailDrawer({
       <Extraction
         title="Visual summary"
         text={detail.visual_summary}
+        open={openExtractionKeys.has(visualSummaryKey)}
         deleting={deletingExtractions.has('visual_summary')}
+        onToggle={() => onToggleExtraction(visualSummaryKey)}
         onDelete={() => onDeleteExtraction('visual_summary')}
       />
       <Extraction
         title="OCR"
         text={detail.ocr_text}
+        open={openExtractionKeys.has(ocrKey)}
         deleting={deletingExtractions.has('ocr')}
+        onToggle={() => onToggleExtraction(ocrKey)}
         onDelete={() => onDeleteExtraction('ocr')}
       />
       <Extraction
         title="Transcript"
         text={detail.transcript}
+        open={openExtractionKeys.has(transcriptKey)}
         deleting={deletingExtractions.has('transcript')}
+        onToggle={() => onToggleExtraction(transcriptKey)}
         onDelete={() => onDeleteExtraction('transcript')}
       />
       {canCycleAssets && (
